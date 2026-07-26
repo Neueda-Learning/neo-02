@@ -1,0 +1,14 @@
+# neo-02's OWN service (module 01: Customer Policy), on prod. Identical to
+# dev.params — a module carries no environment-specific values (the orchestrator URL is built
+# from the Cloud Map namespace in the template). The pipeline adds EnvironmentName + the
+# PINNED @sha256 images + DbEndpoint + AlbDnsName.
+ServiceName=neo-02
+Role=module
+PathPrefix=/neo-02
+ListenerRulePriority=20
+DbName=neo_02
+ServiceId=neo02
+DisplayName=Customer Policy
+Domain=policy
+Team=Team 02
+MockedDependencies=
