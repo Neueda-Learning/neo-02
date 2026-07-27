@@ -161,25 +161,31 @@ flowchart LR
 每个 orchestrator application 对应一条持久化记录。该表同时承担 case、queue item、
 decision trace 和 reporting source 的职责。
 
-| 字段 | MySQL 类型 | 可空 | 约束/含义 |
-|---|---|---:|---|
-| `application_id` | `VARCHAR(64)` | 否 | Request envelope 中的主键；唯一保存的 applicant-related identifier |
-| `processing_status` | `VARCHAR(24)` | 否 | `IN_PROGRESS` 或 `DECIDED`；初始为 `IN_PROGRESS` |
-| `outcome` | `VARCHAR(16)` | 是 | 当前结果：`APPROVED`、`REJECTED` 或 `REFERRED` |
-| `machine_outcome` | `VARCHAR(16)` | 是 | Sampling 和人工介入前规则 1-3 的结果；永不覆盖 |
-| `reference` | `VARCHAR(32)` | 否 | Insert 前生成的唯一操作员 reference |
-| `policy_config_version` | `INT` | 是 | FK → 使用的 config；worker 启动前为空 |
-| `sampling_position` | `BIGINT` | 是 | Every-X rule 使用的唯一首次决策序号 |
-| `rule_results` | `JSON` | 是 | 四个嵌入式 rule sections；处理期间为空 |
-| `claimed_by` | `VARCHAR(100)` | 是 | 当前领取 referred case 的 operator |
-| `claimed_at` | `TIMESTAMP(6)` | 是 | 领取时间 |
-| `decided_by` | `VARCHAR(100)` | 是 | 人工决定者；机器结果保持不变时为空 |
-| `decided_at` | `TIMESTAMP(6)` | 是 | 人工决定或 override 时间 |
-| `decision_reason` | `VARCHAR(1000)` | 是 | 人工决定时必填的原因 |
-| `submitted_at` | `TIMESTAMP(6)` | 否 | 用于搜索排序和日期范围报告的提交时间 |
-| `created_at` | `TIMESTAMP(6)` | 否 | 本地 row 创建时间 |
-| `updated_at` | `TIMESTAMP(6)` | 否 | Case 最近更新时间 |
-| `lock_version` | `BIGINT` | 否 | Claim/decision 并发使用的 JPA optimistic-lock version |
+| 字段 | MySQL 类型 | 可空 | 数据来源 | 约束/含义 |
+|---|---|---:|---|---|
+| `application_id` | `VARCHAR(64)` | 否 | Orchestrator `/execute` envelope | 主键；唯一保存的 applicant-related identifier |
+| `processing_status` | `VARCHAR(24)` | 否 | Customer Policy service workflow | `IN_PROGRESS` 或 `DECIDED`；初始为 `IN_PROGRESS` |
+| `outcome` | `VARCHAR(16)` | 是 | Rule engine、queue reviewer 或 override request | 当前结果：`APPROVED`、`REJECTED` 或 `REFERRED` |
+| `machine_outcome` | `VARCHAR(16)` | 是 | Customer Policy rule engine | Sampling 和人工介入前规则 1-3 的结果；永不覆盖 |
+| `reference` | `VARCHAR(32)` | 否 | Customer Policy service 在 insert 前生成 | 唯一操作员 reference |
+| `policy_config_version` | `INT` | 是 | Worker 选择的 current `policy_config` | FK → 使用的 config；worker 启动前为空 |
+| `sampling_position` | `BIGINT` | 是 | Customer Policy service sampling allocator | Every-X rule 使用的唯一首次决策序号 |
+| `rule_results` | `JSON` | 是 | Rule engine，由内存 application、policy config 和 live registry result 派生 | 四个嵌入式 rule sections；处理期间为空 |
+| `claimed_by` | `VARCHAR(100)` | 是 | 已认证 operator，来自 claim request | 当前领取 referred case 的 operator |
+| `claimed_at` | `TIMESTAMP(6)` | 是 | Claim 成功时的 service/database clock | 领取时间 |
+| `decided_by` | `VARCHAR(100)` | 是 | 已认证 operator，来自 manual-decision 或 override request | 人工决定者；机器结果保持不变时为空 |
+| `decided_at` | `TIMESTAMP(6)` | 是 | Human decision 或 override 成功时的 service/database clock | 人工决定或 override 时间 |
+| `decision_reason` | `VARCHAR(1000)` | 是 | Operator 的 manual-decision 或 override request | 人工决定时必填的原因 |
+| `submitted_at` | `TIMESTAMP(6)` | 否 | Orchestrator `application.submittedAt`（brief 中列出；见下方说明） | 用于搜索排序和日期范围报告的提交时间 |
+| `created_at` | `TIMESTAMP(6)` | 否 | Intake insert 时 MySQL `CURRENT_TIMESTAMP(6)` default | 本地 row 创建时间 |
+| `updated_at` | `TIMESTAMP(6)` | 否 | Customer Policy service/MySQL update timestamp | Case 最近更新时间 |
+| `lock_version` | `BIGINT` | 否 | JPA optimistic locking | Claim/decision 并发使用的 optimistic-lock version |
+
+`submitted_at` 是唯一存在 source-of-truth 冲突的字段：suggested ER 以及
+queue/reporting use case 包含该字段，但 UC00 又说明 application payload
+只持久化 `applicationId`。在 instructor 明确意图之前，应选择省略
+`submitted_at` 并使用本地 `created_at` 排序/报表，或者先获得明确许可再持久化
+`application.submittedAt`。
 
 约束和索引：
 
@@ -240,14 +246,14 @@ MySQL 8.4 可以使用 `JSON_TABLE` 展开所有 `reasonCodes` 数组，完成 U
 每一行代表一个完整 policy document。该表只允许 INSERT：`MAX(version)` 是当前版本，
 旧版本永久保留，用于解释历史 case。
 
-| 字段 | MySQL 类型 | 可空 | 约束/含义 |
-|---|---|---:|---|
-| `version` | `INT` | 否 | 主键；新版本为 `MAX(version) + 1` |
-| `supported_residencies` | `JSON` | 否 | 大写 ISO alpha-2 country code JSON array |
-| `excluded_residencies` | `JSON` | 否 | 大写 ISO alpha-2 country code JSON array |
-| `restriction_list` | `JSON` | 否 | `{fullName, dateOfBirth, reason}` object array |
-| `sample_every` | `INT` | 否 | 每 X 个首次决定转人工；必须至少为 1 |
-| `effective_from` | `TIMESTAMP(6)` | 否 | 该版本成为 current 的时间 |
+| 字段 | MySQL 类型 | 可空 | 数据来源 | 约束/含义 |
+|---|---|---:|---|---|
+| `version` | `INT` | 否 | Customer Policy service 分配；version 1 由 Liquibase seed | 主键；新版本为 `MAX(version) + 1` |
+| `supported_residencies` | `JSON` | 否 | Version 1 来自 Liquibase seed；后续版本来自 compliance officer `POST /config` | 大写 ISO alpha-2 country code JSON array |
+| `excluded_residencies` | `JSON` | 否 | Version 1 来自 Liquibase seed；后续版本来自 compliance officer `POST /config` | 大写 ISO alpha-2 country code JSON array |
+| `restriction_list` | `JSON` | 否 | Version 1 来自 Liquibase seed；后续版本来自 compliance officer `POST /config` | `{fullName, dateOfBirth, reason}` object array |
+| `sample_every` | `INT` | 否 | Version 1 来自 Liquibase seed；后续版本来自 compliance officer `POST /config` | 每 X 个首次决定转人工；必须至少为 1 |
+| `effective_from` | `TIMESTAMP(6)` | 否 | Immutable config version insert 时的 service/database clock | 该版本成为 current 的时间 |
 
 示例：
 
@@ -295,15 +301,15 @@ versioning 还可以避免 case 同时读取到新旧 list 的混合状态。
 UC06 使用的 append-only audit trail。Queue decision 更新 `policy_record` 的 decision
 字段；该表只记录后续 manual override。
 
-| 字段 | MySQL 类型 | 可空 | 约束/含义 |
-|---|---|---:|---|
-| `id` | `BIGINT` | 否 | Auto-increment 主键 |
-| `application_id` | `VARCHAR(64)` | 否 | FK → `policy_record.application_id` |
-| `old_outcome` | `VARCHAR(16)` | 否 | Override 前的 outcome |
-| `new_outcome` | `VARCHAR(16)` | 否 | `APPROVED`、`REJECTED` 或 `REFERRED` |
-| `reason` | `VARCHAR(1000)` | 否 | Operator 必填 justification |
-| `operator_id` | `VARCHAR(100)` | 否 | 已认证的 operator identity |
-| `overridden_at` | `TIMESTAMP(6)` | 否 | Override 时间 |
+| 字段 | MySQL 类型 | 可空 | 数据来源 | 约束/含义 |
+|---|---|---:|---|---|
+| `id` | `BIGINT` | 否 | MySQL auto-increment | 主键 |
+| `application_id` | `VARCHAR(64)` | 否 | Override URL path 以及被引用的 `policy_record` | FK → `policy_record.application_id` |
+| `old_outcome` | `VARCHAR(16)` | 否 | Override transaction 内读取的当前 `policy_record.outcome` | Override 前的 outcome |
+| `new_outcome` | `VARCHAR(16)` | 否 | Operator 的 override request | `APPROVED`、`REJECTED` 或 `REFERRED` |
+| `reason` | `VARCHAR(1000)` | 否 | Operator 的 override request | Operator 必填 justification |
+| `operator_id` | `VARCHAR(100)` | 否 | 已认证 operator；auth 接入前暂来自 request field | 已认证的 operator identity |
+| `overridden_at` | `TIMESTAMP(6)` | 否 | Override 成功时的 service/database clock | Override 时间 |
 
 约束和索引：
 

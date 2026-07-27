@@ -167,25 +167,32 @@ flowchart LR
 One durable row per orchestrator application. This is the case, queue item,
 decision trace, and reporting source.
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `application_id` | `VARCHAR(64)` | no | Primary key from the request envelope; the only applicant-related identifier stored |
-| `processing_status` | `VARCHAR(24)` | no | `IN_PROGRESS` or `DECIDED`; starts as `IN_PROGRESS` |
-| `outcome` | `VARCHAR(16)` | yes | Current result: `APPROVED`, `REJECTED`, or `REFERRED` |
-| `machine_outcome` | `VARCHAR(16)` | yes | Result of rules 1-3 before sampling or human intervention; never overwritten |
-| `reference` | `VARCHAR(32)` | no | Unique operator-facing reference generated before insert |
-| `policy_config_version` | `INT` | yes | FK to the config used; null until the worker begins |
-| `sampling_position` | `BIGINT` | yes | Unique first-decision position used by the every-X rule |
-| `rule_results` | `JSON` | yes | Four embedded rule sections; null while processing |
-| `claimed_by` | `VARCHAR(100)` | yes | Operator currently holding the referred case |
-| `claimed_at` | `TIMESTAMP(6)` | yes | Claim time |
-| `decided_by` | `VARCHAR(100)` | yes | Human decision maker; null when the machine result stands |
-| `decided_at` | `TIMESTAMP(6)` | yes | Human decision or override time |
-| `decision_reason` | `VARCHAR(1000)` | yes | Mandatory reason for a human decision |
-| `submitted_at` | `TIMESTAMP(6)` | no | Submission timestamp used by search ordering and date-range reports |
-| `created_at` | `TIMESTAMP(6)` | no | Local row creation time |
-| `updated_at` | `TIMESTAMP(6)` | no | Latest case update |
-| `lock_version` | `BIGINT` | no | JPA optimistic-lock version for claim/decision races |
+| Column | MySQL type | Null | Source | Constraint / meaning |
+|---|---|---:|---|---|
+| `application_id` | `VARCHAR(64)` | no | Orchestrator `/execute` envelope | Primary key; the only applicant-related identifier stored |
+| `processing_status` | `VARCHAR(24)` | no | Customer Policy service workflow | `IN_PROGRESS` or `DECIDED`; starts as `IN_PROGRESS` |
+| `outcome` | `VARCHAR(16)` | yes | Rule engine, queue reviewer, or override request | Current result: `APPROVED`, `REJECTED`, or `REFERRED` |
+| `machine_outcome` | `VARCHAR(16)` | yes | Customer Policy rule engine | Result of rules 1-3 before sampling or human intervention; never overwritten |
+| `reference` | `VARCHAR(32)` | no | Customer Policy service, generated before insert | Unique operator-facing reference |
+| `policy_config_version` | `INT` | yes | Current `policy_config` selected by the worker | FK to the config used; null until the worker begins |
+| `sampling_position` | `BIGINT` | yes | Customer Policy service sampling allocator | Unique first-decision position used by the every-X rule |
+| `rule_results` | `JSON` | yes | Rule engine, derived from the in-memory application, policy config, and live registry result | Four embedded rule sections; null while processing |
+| `claimed_by` | `VARCHAR(100)` | yes | Authenticated operator from the claim request | Operator currently holding the referred case |
+| `claimed_at` | `TIMESTAMP(6)` | yes | Service/database clock when the claim succeeds | Claim time |
+| `decided_by` | `VARCHAR(100)` | yes | Authenticated operator from the manual-decision or override request | Human decision maker; null when the machine result stands |
+| `decided_at` | `TIMESTAMP(6)` | yes | Service/database clock when the human decision or override succeeds | Human decision or override time |
+| `decision_reason` | `VARCHAR(1000)` | yes | Operator's manual-decision or override request | Mandatory reason for a human decision |
+| `submitted_at` | `TIMESTAMP(6)` | no | Orchestrator `application.submittedAt` (brief-listed; see note below) | Submission timestamp used by search ordering and date-range reports |
+| `created_at` | `TIMESTAMP(6)` | no | MySQL `CURRENT_TIMESTAMP(6)` default on intake insert | Local row creation time |
+| `updated_at` | `TIMESTAMP(6)` | no | Customer Policy service/MySQL update timestamp | Latest case update |
+| `lock_version` | `BIGINT` | no | JPA optimistic locking | Optimistic-lock version for claim/decision races |
+
+`submitted_at` is the only field with an unresolved source-of-truth conflict:
+the suggested ER and the queue/reporting use cases include it, while UC00 says
+that only `applicationId` from the application payload is persisted. Until the
+instructor confirms the intended interpretation, either omit `submitted_at` and
+use local `created_at` for ordering/reporting, or obtain explicit approval to
+persist `application.submittedAt`.
 
 Constraints and indexes:
 
@@ -247,14 +254,14 @@ prove MySQL JSON query behaviour.
 One row is one complete policy document. The table is insert-only:
 `MAX(version)` is current, and old rows remain available to explain old cases.
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `version` | `INT` | no | Primary key; next version is `MAX(version) + 1` |
-| `supported_residencies` | `JSON` | no | JSON array of uppercase ISO alpha-2 country codes |
-| `excluded_residencies` | `JSON` | no | JSON array of uppercase ISO alpha-2 country codes |
-| `restriction_list` | `JSON` | no | Array of `{fullName, dateOfBirth, reason}` objects |
-| `sample_every` | `INT` | no | Every Xth first-time decision is referred; must be at least 1 |
-| `effective_from` | `TIMESTAMP(6)` | no | Time this version became current |
+| Column | MySQL type | Null | Source | Constraint / meaning |
+|---|---|---:|---|---|
+| `version` | `INT` | no | Customer Policy service; version 1 is seeded by Liquibase | Primary key; next version is `MAX(version) + 1` |
+| `supported_residencies` | `JSON` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | JSON array of uppercase ISO alpha-2 country codes |
+| `excluded_residencies` | `JSON` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | JSON array of uppercase ISO alpha-2 country codes |
+| `restriction_list` | `JSON` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | Array of `{fullName, dateOfBirth, reason}` objects |
+| `sample_every` | `INT` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | Every Xth first-time decision is referred; must be at least 1 |
+| `effective_from` | `TIMESTAMP(6)` | no | Service/database clock when the immutable config version is inserted | Time this version became current |
 
 Example:
 
@@ -304,15 +311,15 @@ and inserts `MAX(version) + 1`. Existing versions are never updated or deleted.
 Append-only audit trail for UC06. Queue decisions update the decision fields on
 `policy_record`; this table is specifically for a later manual override.
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `id` | `BIGINT` | no | Auto-increment primary key |
-| `application_id` | `VARCHAR(64)` | no | FK to `policy_record.application_id` |
-| `old_outcome` | `VARCHAR(16)` | no | Outcome before the override |
-| `new_outcome` | `VARCHAR(16)` | no | `APPROVED`, `REJECTED`, or `REFERRED` |
-| `reason` | `VARCHAR(1000)` | no | Mandatory operator justification |
-| `operator_id` | `VARCHAR(100)` | no | Authenticated operator identity |
-| `overridden_at` | `TIMESTAMP(6)` | no | Override time |
+| Column | MySQL type | Null | Source | Constraint / meaning |
+|---|---|---:|---|---|
+| `id` | `BIGINT` | no | MySQL auto-increment | Primary key |
+| `application_id` | `VARCHAR(64)` | no | Override URL path and referenced `policy_record` | FK to `policy_record.application_id` |
+| `old_outcome` | `VARCHAR(16)` | no | Current `policy_record.outcome`, read inside the override transaction | Outcome before the override |
+| `new_outcome` | `VARCHAR(16)` | no | Operator's override request | `APPROVED`, `REJECTED`, or `REFERRED` |
+| `reason` | `VARCHAR(1000)` | no | Operator's override request | Mandatory operator justification |
+| `operator_id` | `VARCHAR(100)` | no | Authenticated operator; request field until authentication is integrated | Authenticated operator identity |
+| `overridden_at` | `TIMESTAMP(6)` | no | Service/database clock when the override succeeds | Override time |
 
 Constraints and indexes:
 
