@@ -94,7 +94,7 @@ export default function App() {
           </div>
         </>
       }
-      footer="One of ten modules · applications arrive from the orchestrator, never from this UI"
+      footer="One of ten modules · applications arrive from the orchestrator, never from this UI ————cache me if u can"
     >
       {screen === 'applications' && (
         <RequestsScreen requests={requests} error={error} info={info} />
