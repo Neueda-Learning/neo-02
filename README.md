@@ -251,3 +251,6 @@ CI sets `CI=true`, which activates the `integration` profile and runs it for rea
   add a change set, never edit an applied one.
 - `backend/` and `frontend/` **stay at the repo root** — the system compose builds
   `./neo-02/backend` and `./neo-02/frontend` by path.
+
+
+test
