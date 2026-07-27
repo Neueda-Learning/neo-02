@@ -28,13 +28,25 @@
 - Team 02 Customer Policy v5 student brief；
 - capstone kickoff 材料。
 
-如果 v5 brief 与当前仓库冲突，以仓库 contract 为准：
+Team 02 v5 brief 是本模块 contract 的 source of truth。如果当前仓库模板与 brief
+冲突，本设计以 brief 为准：
 
-- 入站接口：`POST /api/v1/applications`；
-- 立即返回：HTTP `202`；
-- callback：`PUT /api/v1/applications/{applicationId}`；
-- callback status：`ACCEPTED`、`REJECTED` 或 `REFERRED`；
-- callback service ID：`neo02`。
+- 入站接口：`POST /api/v1/policy/execute`；
+- envelope command：`check-policy`；
+- envelope 内容：`applicationId`、`correlationId`、`command`、完整
+  `application`，以及 v5 `outputs` block；
+- 立即返回：HTTP `202`，body 包含 `status`、`applicationId` 和 `command`；
+- 异步 callback：`POST /api/v1/callbacks`；
+- 业务 outcome：`APPROVED`、`REJECTED` 或 `REFERRED`。
+
+Callback status 与 outcome 分开表达，并按 brief 映射：
+
+| 场景 | Outcome | Callback status | Journey effect |
+|---|---|---|---|
+| 自动批准 | `APPROVED` | `completed` | 执行下一步骤 |
+| 自动拒绝 | `REJECTED` | `rejected` | Journey 以 rejected 结束 |
+| 自动转人工 | `REFERRED` | `application-manual` | 暂停并等待人工处理 |
+| Queue decision 或 override | `APPROVED` 或 `REJECTED` | `local-manual` | 使用人工结果继续 journey |
 
 数据库要求为 MySQL 8.4。Liquibase 负责管理 Schema，Hibernate 使用
 `ddl-auto=validate`，因此 changeset 必须只追加，不能修改已经执行的 changeset。
@@ -77,11 +89,10 @@ Status 和 decision 字段使用 `VARCHAR`。允许值由 Java enum 和 service 
 定义。这样增加本地 workflow state 时不必立即修改数据库类型，同时保持 H2 测试与
 MySQL 的兼容性。
 
-### 3.5 区分机器决定和人工决定
+### 3.5 区分机器 outcome 和当前 outcome
 
-`machine_decision` 保留规则引擎最初的结果；`current_decision` 表示模块当前对外报告的
-决定。人工审核或 override 可以改变 `current_decision`，但不能覆盖
-`machine_decision`。
+`machine_outcome` 保留规则引擎最初的结果；`outcome` 表示模块当前对外报告的结果。
+人工审核或 override 可以改变 `outcome`，但不能覆盖 `machine_outcome`。
 
 ### 3.6 保存规则事实，而不是申请人数据
 
@@ -144,9 +155,10 @@ erDiagram
         int config_version FK
         bigint sampling_ordinal
         varchar workflow_status
-        varchar machine_decision
-        varchar current_decision
+        varchar machine_outcome
+        varchar outcome
         varchar current_reason_code
+        varchar callback_status
         varchar callback_state
         int callback_attempts
         timestamp next_callback_at
@@ -172,8 +184,8 @@ erDiagram
         bigint id PK
         bigint policy_case_id FK
         varchar action_type
-        varchar previous_decision
-        varchar new_decision
+        varchar old_outcome
+        varchar new_outcome
         varchar previous_reason_code
         varchar new_reason_code
         varchar rationale
@@ -190,7 +202,7 @@ flowchart LR
     REGISTRY["Customer Registry"]
 
     subgraph SERVICE["Team 02 - Customer Policy"]
-        API["POST /api/v1/applications"]
+        API["POST /api/v1/policy/execute"]
         WORKER["Policy Worker"]
         ENGINE["决策规则"]
         UI["操作员界面"]
@@ -205,15 +217,16 @@ flowchart LR
     end
 
     ORCH -- "完整 application<br/>仅在内存中使用" --> API
-    API -- "202 in-progress" --> ORCH
-    API --> WORKER
+    API -- "INSERT 一条 IN_PROGRESS case<br/>只保存 applicationId" --> CASES
+    CASES -- "Commit 后交给 worker" --> WORKER
+    API -- "Case commit 后返回 202" --> ORCH
 
     WORKER -- "实时查询产品持有情况" --> REGISTRY
     WORKER --> ENGINE
     CONFIG -- "读取当前生效版本" --> ENGINE
     ENGINE -- "保存派生决定" --> CASES
     ENGINE -- "保存规则结果" --> RESULTS
-    WORKER -- "PUT status callback" --> ORCH
+    WORKER -- "POST /api/v1/callbacks" --> ORCH
 
     UI -- "搜索并领取 case" --> CASES
     UI -- "查看规则结果" --> RESULTS
@@ -339,12 +352,13 @@ sampling_ordinal % sample_every == 0
 | `id` | `BIGINT` | 否 | Auto-increment 主键 |
 | `application_id` | `VARCHAR(64)` | 否 | Request envelope 中的唯一 ID |
 | `reference` | `VARCHAR(32)` | 否 | 操作员使用的唯一 reference |
-| `config_version` | `INT` | 否 | FK → 本 case 使用的 policy version |
-| `sampling_ordinal` | `BIGINT` | 否 | 为抽样分配的序号 |
+| `config_version` | `INT` | 是 | FK → 本 case 使用的 policy version；worker 启动前为空 |
+| `sampling_ordinal` | `BIGINT` | 是 | Off-thread worker 为抽样分配的序号 |
 | `workflow_status` | `VARCHAR(32)` | 否 | 本地处理状态 |
-| `machine_decision` | `VARCHAR(16)` | 是 | 规则引擎最初的结果 |
-| `current_decision` | `VARCHAR(16)` | 是 | 当前 wire-compatible decision |
-| `current_reason_code` | `VARCHAR(64)` | 是 | 当前决定的主要 reason |
+| `machine_outcome` | `VARCHAR(16)` | 是 | 规则引擎最初的结果 |
+| `outcome` | `VARCHAR(16)` | 是 | 当前符合 brief contract 的业务 outcome |
+| `current_reason_code` | `VARCHAR(64)` | 是 | 当前 outcome 的主要 reason |
+| `callback_status` | `VARCHAR(32)` | 是 | 当前 outcome 对应的 brief callback status |
 | `callback_state` | `VARCHAR(16)` | 否 | Callback 发送状态 |
 | `callback_attempts` | `INT` | 否 | 初始值为 `0` |
 | `last_callback_at` | `TIMESTAMP(6)` | 是 | 最近一次 callback 尝试时间 |
@@ -359,7 +373,9 @@ sampling_ordinal % sample_every == 0
 允许值：
 
 - `workflow_status`：`IN_PROGRESS`、`AWAITING_REVIEW`、`COMPLETED`；
-- decision：`ACCEPTED`、`REJECTED`、`REFERRED`；
+- outcome：`APPROVED`、`REJECTED`、`REFERRED`；
+- `callback_status`：`completed`、`rejected`、`application-manual`、
+  `local-manual`；
 - `callback_state`：`PENDING`、`SENT`、`FAILED`。
 
 约束和索引：
@@ -368,7 +384,7 @@ sampling_ordinal % sample_every == 0
 - `reference` 唯一；
 - `(config_version, sampling_ordinal)` 唯一；
 - `(workflow_status, received_at)` 索引，用于 referral queue；
-- `(current_decision, decided_at)` 索引，用于结果搜索；
+- `(outcome, decided_at)` 索引，用于结果搜索；
 - `(callback_state, next_callback_at)` 索引，用于 callback retry；
 - `config_version` 索引，用于 policy history join；
 - FK → `policy_config`，禁止级联删除。
@@ -427,8 +443,8 @@ Rejection patterns 的统计查询直接使用该表，而不是解析 `policy_c
 | `id` | `BIGINT` | 否 | Auto-increment 主键 |
 | `policy_case_id` | `BIGINT` | 否 | FK → `policy_case.id` |
 | `action_type` | `VARCHAR(32)` | 否 | 操作类型 |
-| `previous_decision` | `VARCHAR(16)` | 是 | 操作前的决定 |
-| `new_decision` | `VARCHAR(16)` | 是 | 操作后的决定 |
+| `old_outcome` | `VARCHAR(16)` | 是 | 操作前的 outcome |
+| `new_outcome` | `VARCHAR(16)` | 是 | 操作后的 outcome |
 | `previous_reason_code` | `VARCHAR(64)` | 是 | 操作前的主要 reason |
 | `new_reason_code` | `VARCHAR(64)` | 是 | 操作后的主要 reason |
 | `rationale` | `VARCHAR(1000)` | 是 | Decision 或 override 时必填 |
@@ -461,32 +477,49 @@ Rejection patterns 的统计查询直接使用该表，而不是解析 `policy_c
 4. 命中 restriction list：`REJECTED`。
 5. Registry 不可用或其他依赖无法确定：`REFERRED`。
 6. Sampling rule 选中该 case：`REFERRED`。
-7. 其他情况：`ACCEPTED`。
+7. 其他情况：`APPROVED`。
 
 即使前面的 hard rejection 已经确定最终决定，仍可以记录其他适用规则的结果。如果因
 必要数据缺失而无法安全执行规则，应记录 `ERROR` 或 `SKIPPED` 以及对应 reason code，
 但不能持久化格式错误的原始值。
 
-Callback `comment` 根据 `current_decision`、`current_reason_code` 和结构化 rule
-results 生成。不额外保存重复的自由文本，因为源数据已经存在，而且 callback text
-可能意外包含 applicant information。
+Callback payload 根据 `outcome`、`callback_status`、`current_reason_code` 和结构化
+rule results 生成，并遵守 brief 锁定的 callback shape。不额外保存重复的自由文本，
+避免意外持久化 applicant information。
 
 ## 7. 事务与并发边界
 
-创建新 case 应在一个事务中完成：
+`/execute` intake 必须在返回 HTTP `202` 前完成以下步骤：
 
-1. 找到并锁定当前生效的 published config；
-2. 检查 `application_id` 是否已经存在；
-3. 分配 sampling ordinal；
-4. 创建 `policy_case`；
-5. 执行规则并插入 `policy_rule_result`；
-6. 更新 machine/current decision 和 workflow status；
-7. 提交事务；
-8. 提交后向 orchestrator 发送 callback。
+1. 验证 `applicationId` 和 `command`；
+2. 以 `application_id` 为唯一键插入一条 `policy_case`，并设置
+   `workflow_status = IN_PROGRESS`；
+3. 如果 application 已存在，读取现有 case，不创建第二条记录，也不重复处理；
+4. 提交 case；
+5. 返回包含 `status`、`applicationId` 和 `command` 的 `202`；
+6. 只有 commit 成功后，才启动 off-thread decision processing。
 
-Callback 应位于数据库事务之外。网络失败不能回滚已经产生的 policy decision。发送
-失败时，在一个简短的后续事务中更新 `callback_state`、`callback_attempts` 和
-`next_callback_at`。
+Request thread 不调用 registry，也不执行 policy rules。Application object 只传递给
+内存中的 worker，绝不持久化。
+
+已提交的 `IN_PROGRESS` row 是持久化的 hand-off。服务重启后，recovery worker 必须
+使用 `application_id` 从 orchestrator 实时获取 application，并恢复遗留 case；恢复
+不能依赖 orchestrator 再次发送 `/execute`。
+
+Worker 随后执行：
+
+1. 读取当前 config version 并分配 sampling ordinal；
+2. 实时查询 registry 并执行 policy rules；
+3. 提交 rule results、`machine_outcome`、`outcome`、`callback_status` 和 workflow
+   state；
+4. Decision commit 后发送 `POST /api/v1/callbacks`。
+
+重复 `/execute` 不会再次执行规则或调用 registry。如果 case 已经产生结果，则重放已
+保存的 outcome 和 callback status。
+
+Callback 位于 decision transaction 之外。网络失败不能回滚已经产生的 policy
+outcome。发送失败时，在一个简短的后续事务中更新 `callback_state`、
+`callback_attempts` 和 `next_callback_at`。
 
 Manual claim、manual decision 和 override 必须使用 `lock_version`。发生并发更新时应
 返回 conflict，不能静默覆盖另一位操作员的工作。

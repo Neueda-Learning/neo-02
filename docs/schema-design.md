@@ -28,13 +28,26 @@ This design is based on:
 - the Team 02 Customer Policy v5 student brief;
 - the capstone kickoff material.
 
-Where the v5 brief conflicts with this repository, the repository contract wins:
+The Team 02 v5 brief is the source of truth for the module contract. Where the
+current repository template conflicts with the brief, this design follows the
+brief:
 
-- inbound: `POST /api/v1/applications`;
-- immediate response: HTTP `202`;
-- callback: `PUT /api/v1/applications/{applicationId}`;
-- callback status: `ACCEPTED`, `REJECTED`, or `REFERRED`;
-- callback service ID: `neo02`.
+- inbound: `POST /api/v1/policy/execute`;
+- envelope command: `check-policy`;
+- envelope content: `applicationId`, `correlationId`, `command`, the whole
+  `application`, and the v5 `outputs` block;
+- immediate response: HTTP `202` with `status`, `applicationId`, and `command`;
+- off-thread callback: `POST /api/v1/callbacks`;
+- business outcome: `APPROVED`, `REJECTED`, or `REFERRED`.
+
+Callback status and journey effect are mapped independently from the outcome:
+
+| Situation | Outcome | Callback status | Journey effect |
+|---|---|---|---|
+| Automatic approval | `APPROVED` | `completed` | Run the next step |
+| Automatic rejection | `REJECTED` | `rejected` | End the journey as rejected |
+| Automatic referral | `REFERRED` | `application-manual` | Park for a person |
+| Queue decision or override | `APPROVED` or `REJECTED` | `local-manual` | Resume with the human outcome |
 
 The database is MySQL 8.4. Liquibase owns the schema and Hibernate uses
 `ddl-auto=validate`. Changesets must therefore be append-only.
@@ -81,12 +94,11 @@ Status and decision fields use `VARCHAR`. Java enums and service validation defi
 their allowed values. This avoids a database migration whenever a local workflow
 state is added and keeps H2 tests compatible with MySQL.
 
-### 3.5 Separate machine and human decisions
+### 3.5 Separate machine and human outcomes
 
-`machine_decision` preserves the rule engine's original result.
-`current_decision` is the decision currently reported by the module. Manual review
-or override may change `current_decision`, but must not overwrite
-`machine_decision`.
+`machine_outcome` preserves the rule engine's original result. `outcome` is the
+result currently reported by the module. Manual review or override may change
+`outcome`, but must not overwrite `machine_outcome`.
 
 ### 3.6 Store rule facts, not applicant data
 
@@ -150,9 +162,10 @@ erDiagram
         int config_version FK
         bigint sampling_ordinal
         varchar workflow_status
-        varchar machine_decision
-        varchar current_decision
+        varchar machine_outcome
+        varchar outcome
         varchar current_reason_code
+        varchar callback_status
         varchar callback_state
         int callback_attempts
         timestamp next_callback_at
@@ -178,8 +191,8 @@ erDiagram
         bigint id PK
         bigint policy_case_id FK
         varchar action_type
-        varchar previous_decision
-        varchar new_decision
+        varchar old_outcome
+        varchar new_outcome
         varchar previous_reason_code
         varchar new_reason_code
         varchar rationale
@@ -196,7 +209,7 @@ flowchart LR
     REGISTRY["Customer Registry"]
 
     subgraph SERVICE["Team 02 - Customer Policy"]
-        API["POST /api/v1/applications"]
+        API["POST /api/v1/policy/execute"]
         WORKER["Policy Worker"]
         ENGINE["Decision Rules"]
         UI["Operator UI"]
@@ -211,15 +224,16 @@ flowchart LR
     end
 
     ORCH -- "Full application<br/>(used in memory only)" --> API
-    API -- "202 in-progress" --> ORCH
-    API --> WORKER
+    API -- "INSERT one IN_PROGRESS case<br/>(applicationId only)" --> CASES
+    CASES -- "Committed hand-off" --> WORKER
+    API -- "202 after case commit" --> ORCH
 
     WORKER -- "Live product-ownership lookup" --> REGISTRY
     WORKER --> ENGINE
     CONFIG -- "Read effective version" --> ENGINE
     ENGINE -- "Store derived decision" --> CASES
     ENGINE -- "Store rule outcomes" --> RESULTS
-    WORKER -- "PUT status callback" --> ORCH
+    WORKER -- "POST /api/v1/callbacks" --> ORCH
 
     UI -- "Search and claim cases" --> CASES
     UI -- "Inspect outcomes" --> RESULTS
@@ -351,12 +365,13 @@ metadata only, never the application payload.
 | `id` | `BIGINT` | no | Auto-increment primary key |
 | `application_id` | `VARCHAR(64)` | no | Unique ID from the request envelope |
 | `reference` | `VARCHAR(32)` | no | Unique operator-facing reference |
-| `config_version` | `INT` | no | FK to the policy version used |
-| `sampling_ordinal` | `BIGINT` | no | Sequence allocated for sampling |
+| `config_version` | `INT` | yes | FK to the policy version used; null until the worker starts |
+| `sampling_ordinal` | `BIGINT` | yes | Sequence allocated off-thread for sampling |
 | `workflow_status` | `VARCHAR(32)` | no | Local processing state |
-| `machine_decision` | `VARCHAR(16)` | yes | Original engine result |
-| `current_decision` | `VARCHAR(16)` | yes | Current wire-compatible decision |
-| `current_reason_code` | `VARCHAR(64)` | yes | Primary reason for the current decision |
+| `machine_outcome` | `VARCHAR(16)` | yes | Original engine result |
+| `outcome` | `VARCHAR(16)` | yes | Current brief-compatible business outcome |
+| `current_reason_code` | `VARCHAR(64)` | yes | Primary reason for the current outcome |
+| `callback_status` | `VARCHAR(32)` | yes | Brief callback status for the current outcome |
 | `callback_state` | `VARCHAR(16)` | no | Callback delivery state |
 | `callback_attempts` | `INT` | no | Starts at `0` |
 | `last_callback_at` | `TIMESTAMP(6)` | yes | Most recent callback attempt |
@@ -371,7 +386,9 @@ metadata only, never the application payload.
 Allowed values:
 
 - `workflow_status`: `IN_PROGRESS`, `AWAITING_REVIEW`, `COMPLETED`;
-- decisions: `ACCEPTED`, `REJECTED`, `REFERRED`;
+- outcomes: `APPROVED`, `REJECTED`, `REFERRED`;
+- `callback_status`: `completed`, `rejected`, `application-manual`,
+  `local-manual`;
 - `callback_state`: `PENDING`, `SENT`, `FAILED`.
 
 Constraints and indexes:
@@ -380,7 +397,7 @@ Constraints and indexes:
 - unique `reference`;
 - unique `(config_version, sampling_ordinal)`;
 - index `(workflow_status, received_at)` for the referral queue;
-- index `(current_decision, decided_at)` for outcome search;
+- index `(outcome, decided_at)` for outcome search;
 - index `(callback_state, next_callback_at)` for callback retry;
 - index `config_version` for policy-history joins;
 - FK to `policy_config` with delete restricted.
@@ -441,8 +458,8 @@ Append-only audit log for operator activity.
 | `id` | `BIGINT` | no | Auto-increment primary key |
 | `policy_case_id` | `BIGINT` | no | FK to `policy_case.id` |
 | `action_type` | `VARCHAR(32)` | no | Operator action |
-| `previous_decision` | `VARCHAR(16)` | yes | Decision before the action |
-| `new_decision` | `VARCHAR(16)` | yes | Decision after the action |
+| `old_outcome` | `VARCHAR(16)` | yes | Outcome before the action |
+| `new_outcome` | `VARCHAR(16)` | yes | Outcome after the action |
 | `previous_reason_code` | `VARCHAR(64)` | yes | Primary reason before the action |
 | `new_reason_code` | `VARCHAR(64)` | yes | Primary reason after the action |
 | `rationale` | `VARCHAR(1000)` | yes | Required for decision or override |
@@ -475,33 +492,52 @@ Rules should be evaluated and reported consistently:
 4. Restriction-list match: `REJECTED`.
 5. Registry unavailable or another indeterminate dependency result: `REFERRED`.
 6. Sampling rule selected the case: `REFERRED`.
-7. Otherwise: `ACCEPTED`.
+7. Otherwise: `APPROVED`.
 
 All applicable rule results may be recorded even when an earlier hard rejection
 already determines the decision. If a rule cannot safely run because required data
 is absent, record `ERROR` or `SKIPPED` with the appropriate reason code; do not
 persist the malformed value.
 
-The callback `comment` is generated from `current_decision`,
-`current_reason_code`, and the structured rule results. It is not stored as a
-duplicate free-text field because its source data already exists and callback text
-may accidentally contain applicant information.
+The callback payload is generated from `outcome`, `callback_status`,
+`current_reason_code`, and the structured rule results. It follows the brief's
+locked callback shape and is not stored as duplicate free text, which could
+accidentally retain applicant information.
 
 ## 7. Transaction and Concurrency Boundaries
 
-Creating a new case should be one transaction:
+The `/execute` intake path must complete before the HTTP `202` is returned:
 
-1. resolve and lock the effective published config;
-2. check `application_id` for an existing case;
-3. allocate the sampling ordinal;
-4. create `policy_case`;
-5. evaluate and insert `policy_rule_result` rows;
-6. update machine/current decision and workflow status;
-7. commit;
-8. send the orchestrator callback after commit.
+1. validate `applicationId` and `command`;
+2. insert exactly one `policy_case`, keyed by `application_id`, with
+   `workflow_status = IN_PROGRESS`;
+3. if the application already exists, load it without creating or re-processing
+   a second case;
+4. commit the case;
+5. return `202` with `status`, `applicationId`, and `command`;
+6. start off-thread decision processing only after the commit.
 
-The callback is deliberately outside the database transaction. A network failure
-must not roll back the policy decision. On failure, update `callback_state`,
+The request thread does not call the registry or run policy rules. The application
+object is handed to the in-memory worker and is never persisted.
+
+The committed `IN_PROGRESS` row is the durable hand-off. A recovery worker must
+resume stranded rows after a restart by fetching the application live from the
+orchestrator using `application_id`; recovery must not depend on another
+`/execute` delivery.
+
+The worker then:
+
+1. resolves the current config version and allocates the sampling ordinal;
+2. performs the live registry lookup and evaluates the policy rules;
+3. commits rule results, `machine_outcome`, `outcome`, `callback_status`, and
+   workflow state;
+4. sends `POST /api/v1/callbacks` after the decision commit.
+
+A repeated `/execute` does not re-run rules or call the registry again. If the
+case is already decided, the stored outcome and callback status are replayed.
+
+The callback is deliberately outside the decision transaction. A network failure
+must not roll back the policy outcome. On failure, update `callback_state`,
 `callback_attempts`, and `next_callback_at` in a short follow-up transaction.
 
 Manual claim, manual decision, and override operations must use `lock_version`.
