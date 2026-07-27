@@ -98,7 +98,9 @@ For a restriction-list match, it may reference the bank-owned
 `policy_restriction_entry`. That entry is policy configuration, not a copy of the
 applicant.
 
-## 4. Entity Relationship Diagram
+## 4. Diagrams
+
+### 4.1 Entity Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -185,6 +187,52 @@ erDiagram
         timestamp created_at
     }
 ```
+
+### 4.2 Processing and Data Ownership
+
+```mermaid
+flowchart LR
+    ORCH["Module 00 Orchestrator"]
+    REGISTRY["Customer Registry"]
+
+    subgraph SERVICE["Team 02 - Customer Policy"]
+        API["POST /api/v1/applications"]
+        WORKER["Policy Worker"]
+        ENGINE["Decision Rules"]
+        UI["Operator UI"]
+    end
+
+    subgraph DATABASE["MySQL 8.4 - neo_02 schema"]
+        CONFIG["Policy Config<br/>Residency Rules<br/>Restriction Entries"]
+        CASES["Policy Cases"]
+        RESULTS["Rule Results"]
+        ACTIONS["Manual Action Log"]
+        BOUNDARY["No application payload<br/>or customer profile"]
+    end
+
+    ORCH -- "Full application<br/>(used in memory only)" --> API
+    API -- "202 in-progress" --> ORCH
+    API --> WORKER
+
+    WORKER -- "Live product-ownership lookup" --> REGISTRY
+    WORKER --> ENGINE
+    CONFIG -- "Read effective version" --> ENGINE
+    ENGINE -- "Store derived decision" --> CASES
+    ENGINE -- "Store rule outcomes" --> RESULTS
+    WORKER -- "PUT status callback" --> ORCH
+
+    UI -- "Search and claim cases" --> CASES
+    UI -- "Inspect outcomes" --> RESULTS
+    UI -- "Record review or override" --> ACTIONS
+    UI -- "Fetch applicant details live" --> ORCH
+
+    BOUNDARY -. "Privacy boundary" .-> CASES
+```
+
+The request payload is available to the worker only while rules are being
+evaluated. MySQL stores the application ID, policy version, derived outcomes, and
+audit metadata. Applicant details remain owned by the orchestrator and are fetched
+live when an operator opens a case.
 
 ## 5. Table Definitions
 
