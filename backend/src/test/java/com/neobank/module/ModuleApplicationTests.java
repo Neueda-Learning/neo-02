@@ -332,6 +332,23 @@ class ModuleApplicationTests {
                 .andExpect(jsonPath("$[0].outcome").value("REJECTED"));
     }
 
+        @Test
+        void httpRequestCasesNameQueryFindsMariaCheckpointCase() throws Exception {
+                mvc.perform(get("/api/v1/cases?q=Maria&limit=10"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-maria-001')]").exists());
+        }
+
+        @Test
+        void httpRequestApplicantHydrationReturnsRetryableWhenOrchestratorIsDown() throws Exception {
+                // In test profile the orchestrator URL points to a dead port (localhost:9).
+                mvc.perform(get("/api/v1/cases/uc01-maria-001/applicant"))
+                                .andExpect(status().isServiceUnavailable())
+                                .andExpect(jsonPath("$.retryable").value(true))
+                                .andExpect(jsonPath("$.applicationId").value("uc01-maria-001"))
+                                .andExpect(jsonPath("$.applicantName").value("—"));
+        }
+
     @Test
     void httpRequestUrlEncodedSpacesAreHandledCorrectly() throws Exception {
         mvc.perform(post("/api/v1/applications")

@@ -1,6 +1,7 @@
 package com.neobank.module.integrations.orchestrator;
 
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +83,46 @@ public class OrchestratorClient {
                     name, e.toString());
             return List.of();
         }
+    }
+
+    /**
+     * Fetch applicant name for a single application id from the orchestrator.
+     *
+     * <p>Expected source shape is the same envelope this module receives on POST:
+     * <code>{"application": {"applicant": {"fullName": "..."}}}</code>.</p>
+     *
+     * @param applicationId application id
+     * @return applicant full name, or {@code "—"} when missing in payload
+     * @throws RestClientException when the orchestrator is unreachable or returns non-2xx
+     */
+    @SuppressWarnings("unchecked")
+    public String fetchApplicantName(String applicationId) {
+        Map<String, Object> response = http.get()
+                .uri(applicationsUrl + "/{applicationId}", applicationId)
+                .retrieve()
+                .body(Map.class);
+
+        if (response == null) {
+            return "—";
+        }
+
+        Object application = response.get("application");
+        if (!(application instanceof Map<?, ?> applicationMap)) {
+            return "—";
+        }
+
+        Object applicant = ((Map<String, Object>) applicationMap).get("applicant");
+        if (!(applicant instanceof Map<?, ?> applicantMap)) {
+            return "—";
+        }
+
+        Object fullName = ((Map<String, Object>) applicantMap).get("fullName");
+        if (fullName == null) {
+            return "—";
+        }
+
+        String name = String.valueOf(fullName).trim();
+        return name.isEmpty() ? "—" : name;
     }
 
     /**
