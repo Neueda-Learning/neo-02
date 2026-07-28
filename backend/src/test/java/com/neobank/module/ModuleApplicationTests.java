@@ -1,5 +1,6 @@
 package com.neobank.module;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -7,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.concurrent.Executor;
+import com.neobank.module.repository.PolicyRecordRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -68,13 +70,16 @@ class ModuleApplicationTests {
     @Autowired
     private MockMvc mvc;
 
+    @Autowired
+    private PolicyRecordRepository records;
+
     private static String application(String id) {
         return APPLICATION.formatted(id, id);
     }
 
     @Test
     void contextLoads() {
-        // Reaching here means Liquibase created demo_showcase and ddl-auto=validate accepted it.
+        // Reaching here means Liquibase created policy_record and JPA validated it.
     }
 
     @Test
@@ -84,6 +89,13 @@ class ModuleApplicationTests {
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.serviceId").value("neo02"))
                 .andExpect(jsonPath("$.database.status").value("UP"));
+    }
+
+    @Test
+    void executeEndpointAppearsInOpenApi() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/applications'].post").exists());
     }
 
     @Test
@@ -100,7 +112,7 @@ class ModuleApplicationTests {
     }
 
     @Test
-    void anApplicationIsAcknowledgedProcessedAndReadableBack() throws Exception {
+    void anApplicationIsPersistedBeforeTheAcknowledgementAndReadableBack() throws Exception {
         mvc.perform(post("/api/v1/applications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(application("IT-ONE")))
@@ -110,14 +122,32 @@ class ModuleApplicationTests {
                 .andExpect(jsonPath("$.serviceId").value("neo02"))
                 .andExpect(jsonPath("$.command").value("process-application"));
 
-        // The row the placeholder writes. Filtered by id, not counted: H2 is shared across the
-        // tests in this context, so a size assertion would depend on execution order.
+        assertThat(records.findById("IT-ONE"))
+                .get()
+                .satisfies(row -> assertThat(row.getProcessingStatus()).isEqualTo("IN_PROGRESS"));
+
         mvc.perform(get("/api/v1/applications"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].status")
-                        .value(org.hamcrest.Matchers.hasItem("ACCEPTED")))
+                        .value(org.hamcrest.Matchers.hasItem("IN_PROGRESS")))
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].createdAt")
                         .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.notNullValue())));
+    }
+
+    @Test
+    void repeatedApplicationIsAcknowledgedButStoredOnlyOnce() throws Exception {
+        String body = application("IT-DUPLICATE");
+
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted());
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted());
+
+        assertThat(records.findAll().stream()
+                .filter(row -> row.getApplicationId().equals("IT-DUPLICATE")))
+                .hasSize(1);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.neobank.module.integrations.orchestrator;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * What the orchestrator POSTs to {@code /api/v1/applications} — the envelope, and the
@@ -8,19 +9,18 @@ import jakarta.validation.constraints.NotBlank;
  *
  * <p><b>Fixed by the system.</b> See {@code package-info.java}.</p>
  *
- * @param applicationId the id everything keys on. The only validated field: an envelope without
+ * @param applicationId the id everything keys on. An envelope without
  *                      one is rejected {@code 400} before your service is called, because a
  *                      decision you cannot report is worse than no decision.
  * @param correlationId ties this call to one customer journey across all ten modules; log it
- * @param command       what you are being asked to do, e.g. {@code process-application}. Read it,
- *                      do not switch on it — the orchestrator currently sends one value to
- *                      everybody
+ * @param command       what you are being asked to do, e.g. {@code process-application}; required
+ *                      by the envelope contract
  * @param application   the whole application, every field, typed
  */
 public record ApplicationRequest(
-        @NotBlank String applicationId,
+        @NotBlank @Size(max = 64) String applicationId,
         String correlationId,
-        String command,
+        @NotBlank String command,
         Application application) {
 
     /**

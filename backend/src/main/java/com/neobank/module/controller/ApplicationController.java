@@ -1,6 +1,6 @@
 package com.neobank.module.controller;
 
-import com.neobank.module.dto.DemoShowcaseView;
+import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
 import jakarta.validation.Valid;
@@ -44,8 +44,8 @@ public class ApplicationController {
      * The contract entry point. {@code 202} means "received and working on it" — the real answer
      * arrives later, as a status update on the application.
      *
-     * <p>{@code @Valid} rejects an envelope with no {@code applicationId} as {@code 400} before any
-     * work starts: an application this module cannot report on is not worth processing. Everything
+     * <p>{@code @Valid} rejects an envelope with no {@code applicationId} or command as {@code 400}
+     * before any work starts. Everything
      * else is accepted, <em>including</em> malformed dates and unknown product codes — judging those
      * is the module's job, and a {@code 400} would rob it of the chance to say which field was
      * wrong.</p>
@@ -53,7 +53,7 @@ public class ApplicationController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> processApplication(
             @Valid @RequestBody ApplicationRequest request) {
-        applications.processApplicationAsync(request);
+        applications.accept(request);
         return ResponseEntity.accepted().body(ack(request));
     }
 
@@ -64,10 +64,8 @@ public class ApplicationController {
      * sibling acknowledgements in the orchestrator and the sidecar are inline maps too.
      * {@code ApplicationControllerTest} pins all four fields.
      *
-     * <p><b>{@code LinkedHashMap}, not {@code Map.of}.</b> {@code Map.of} throws on a null value,
-     * and {@code command} is not a validated field — an envelope without one is legal and would
-     * turn into a {@code 500}. This keeps field order for readability and serialises an absent
-     * command as JSON {@code null}, which is what the record it replaced did.</p>
+     * <p><b>{@code LinkedHashMap}, not {@code Map.of}.</b> This keeps the contract's field order
+     * explicit and readable.</p>
      */
     private Map<String, Object> ack(ApplicationRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -83,7 +81,7 @@ public class ApplicationController {
      * orchestrator never calls it.
      */
     @GetMapping
-    public List<DemoShowcaseView> list() {
+    public List<PolicyRecordView> list() {
         return applications.findAll();
     }
 }

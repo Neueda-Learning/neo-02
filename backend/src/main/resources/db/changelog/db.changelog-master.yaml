@@ -12,3 +12,5 @@ databaseChangeLog:
       file: db/changelog/changes/004-create-override-log.yaml
   - include:
       file: db/changelog/changes/005-seed-policy-config-v1.yaml
+  - include:
+      file: db/changelog/changes/006-drop-demo-showcase.yaml

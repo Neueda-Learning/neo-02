@@ -11,9 +11,7 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
-# Point the callback at a dead port so nothing escapes the JVM when one fires.
-# ModuleApplicationTests runs the decision on the test thread (see its
-# SameThreadExecutor), so the whole receive -> decide -> callback loop is deterministic here.
+# Point future decision callbacks at a dead port so nothing can escape the test JVM.
 #
 # `domain` and `mocked-dependencies` are set to real-looking values on purpose: they are the
 # two fields on /info that a team must fill in for themselves, and a test asserting them is
