@@ -1,0 +1,78 @@
+# override_log — append-only audit trail for manual overrides (see docs/schema-design.md §6.3).
+# Queue decisions update policy_record directly; this table is only for a later manual override
+# and never changes machine_outcome, policy_config_version, sampling_position, or rule_results.
+databaseChangeLog:
+  - changeSet:
+      id: 004-create-override-log
+      author: neo-02
+      changes:
+        - createTable:
+            tableName: override_log
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  # Outcome before the override, read inside the override transaction.
+                  name: old_outcome
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  # APPROVED | REJECTED | REFERRED.
+                  name: new_outcome
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reason
+                  type: VARCHAR(1000)
+                  constraints:
+                    nullable: false
+              - column:
+                  # Aligned exactly with the upstream override request field.
+                  name: operator
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: overridden_at
+                  type: TIMESTAMP(6)
+                  defaultValueComputed: CURRENT_TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: override_log
+            baseColumnNames: application_id
+            referencedTableName: policy_record
+            referencedColumnNames: application_id
+            constraintName: fk_override_log_policy_record
+            onDelete: RESTRICT
+        - createIndex:
+            tableName: override_log
+            indexName: idx_override_log_application_time
+            columns:
+              - column:
+                  name: application_id
+              - column:
+                  name: overridden_at
+        - createIndex:
+            tableName: override_log
+            indexName: idx_override_log_operator_time
+            columns:
+              - column:
+                  name: operator
+              - column:
+                  name: overridden_at
+      rollback:
+        - dropTable:
+            tableName: override_log
