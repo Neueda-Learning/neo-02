@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClientException;
 
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
@@ -77,21 +78,20 @@ public class CasesController {
     @GetMapping("/{id}/applicant")
     public ResponseEntity<?> getApplicant(@PathVariable("id") String applicationId) {
         try {
-            // Call the orchestrator to get applicant details
-            // For now, return a placeholder that the UI will hydrate
-            // In a real implementation, this would call the orchestrator's GET /applications/{id}
-            // and extract the applicant field
-            
+            String applicantName = orchestrator.fetchApplicantName(applicationId);
+
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("applicationId", applicationId);
-            response.put("applicantName", "—"); // Placeholder for hydration
+            response.put("applicantName", applicantName);
             return ResponseEntity.ok(response);
-        } catch (Exception e) {
+        } catch (RestClientException e) {
             log.warn("Failed to fetch applicant for {}: {}", applicationId, e.toString());
             // Return 503 so the UI knows to retry
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Orchestrator unavailable");
             error.put("retryable", true);
+            error.put("applicationId", applicationId);
+            error.put("applicantName", "—");
             return ResponseEntity.status(503).body(error);
         }
     }

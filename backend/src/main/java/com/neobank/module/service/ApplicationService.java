@@ -106,7 +106,7 @@ public class ApplicationService {
         }
 
         String q = query.trim();
-        limit = Math.min(limit, 10); // Cap at 10 per spec
+        limit = Math.max(1, Math.min(limit, 10)); // Cap at 10 per spec and keep positive
 
         // Try to search by application ID first (direct local lookup)
         Optional<PolicyRecord> byId = records.findById(q);
@@ -117,7 +117,13 @@ public class ApplicationService {
         // If not found by ID, treat as name search: resolve through orchestrator
         List<String> applicationIds = orchestrator.searchApplicationIdsByName(q);
         if (applicationIds.isEmpty()) {
-            return List.of();
+            // Local resilience fallback (useful in sidecar/local where name search may be absent):
+            // search application ids by substring, still capped and sorted newest first.
+            return records.findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
+                            q, PageRequest.of(0, limit))
+                    .stream()
+                    .map(PolicyRecordView::of)
+                    .toList();
         }
 
         // Limit IDs to fetch

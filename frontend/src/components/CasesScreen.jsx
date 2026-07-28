@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
+  Button,
   DataTable,
   EmptyState,
   PageHeader,
@@ -23,6 +24,8 @@ export default function CasesScreen({ info }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState(false);
+  const [applicantCache, setApplicantCache] = useState({});
+  const inFlightApplicants = useRef(new Set());
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -55,8 +58,92 @@ export default function CasesScreen({ info }) {
     return 'neutral';
   };
 
+  const fetchApplicant = (applicationId) => {
+    if (inFlightApplicants.current.has(applicationId)) {
+      return;
+    }
+
+    inFlightApplicants.current.add(applicationId);
+    setApplicantCache((prev) => ({
+      ...prev,
+      [applicationId]: { name: '…', loading: true, retryable: false },
+    }));
+
+    api.getApplicant(applicationId)
+      .then((payload) => {
+        const raw = payload?.applicantName;
+        const name = typeof raw === 'string' && raw.trim() ? raw : '—';
+        setApplicantCache((prev) => ({
+          ...prev,
+          [applicationId]: { name, loading: false, retryable: false },
+        }));
+      })
+      .catch((err) => {
+        const retryable = err?.status === 503 || err?.details?.retryable === true;
+        setApplicantCache((prev) => ({
+          ...prev,
+          [applicationId]: { name: '—', loading: false, retryable },
+        }));
+      })
+      .finally(() => {
+        inFlightApplicants.current.delete(applicationId);
+      });
+  };
+
+  // Live-hydrate applicant names for current rows only (at most 10 rows per page view).
+  useEffect(() => {
+    if (!searched || results.length === 0) {
+      return;
+    }
+
+    const ids = results.slice(0, 10).map((r) => r.applicationId);
+    ids.forEach((id) => {
+      if (applicantCache[id] == null) {
+        fetchApplicant(id);
+      }
+    });
+  }, [results, searched, applicantCache]);
+
+  const retryApplicant = (applicationId) => {
+    setApplicantCache((prev) => {
+      const next = { ...prev };
+      delete next[applicationId];
+      return next;
+    });
+    fetchApplicant(applicationId);
+  };
+
   const columns = [
     { key: 'applicationId', header: 'Application', mono: true },
+    {
+      key: 'applicantName',
+      header: 'Applicant',
+      render: (r) => {
+        const entry = applicantCache[r.applicationId];
+        if (!entry || entry.loading) {
+          return '…';
+        }
+        if (entry.retryable) {
+          return (
+            <span>
+              —{' '}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  retryApplicant(r.applicationId);
+                }}
+              >
+                Retry
+              </Button>
+            </span>
+          );
+        }
+        return entry.name;
+      },
+    },
     {
       key: 'outcome',
       header: 'Outcome',
@@ -87,7 +174,7 @@ export default function CasesScreen({ info }) {
     <>
       <PageHeader
         title="Cases"
-        lede="search applications by ID or applicant name · results show policy evaluation outcome"
+        lede="empty until you search · max 10 rows · names fetched live, never stored"
         meta={
           info
             ? `${info.serviceId} · ${info.domain} · v${info.version}` +
