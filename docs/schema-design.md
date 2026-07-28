@@ -120,45 +120,96 @@ erDiagram
         varchar old_outcome
         varchar new_outcome
         varchar reason
-        varchar operator_id
+        varchar operator
         timestamp overridden_at
     }
 ```
 
 ## 5. Processing and Data Ownership
 
+### 5.1 One Application: Runtime Call Sequence
+
 ```mermaid
-flowchart LR
-    ORCH["Module 00 Orchestrator"]
-    REGISTRY["Customer Registry"]
+sequenceDiagram
+    autonumber
+    participant O as Module 00 Orchestrator
+    participant C as Policy Controller
+    participant R as policy_record
+    participant W as Off-thread Policy Worker
+    participant P as policy_config
 
-    subgraph SERVICE["Team 02 - Customer Policy"]
-        API["POST /api/v1/policy/execute"]
-        WORKER["Off-thread Policy Worker"]
-        UI["Operator UI"]
-    end
-
-    subgraph DATABASE["MySQL 8.4 - neo_02"]
-        RECORD["policy_record<br/>case + ruleResults JSON"]
-        CONFIG["policy_config<br/>versioned policy JSON"]
-        OVERRIDE["override_log<br/>append-only audit"]
-        PRIVACY["No application payload<br/>No customer profile"]
-    end
-
-    ORCH -- "Whole application<br/>memory only" --> API
-    API -- "INSERT IN_PROGRESS<br/>applicationId only" --> RECORD
-    API -- "202 after commit" --> ORCH
-    RECORD -- "Committed hand-off" --> WORKER
-    CONFIG -- "Read MAX(version)" --> WORKER
-    WORKER -- "Live product lookup" --> REGISTRY
-    WORKER -- "Store outcomes + ruleResults" --> RECORD
-    WORKER -- "POST /api/v1/callbacks" --> ORCH
-
-    UI -- "Search, claim, decide" --> RECORD
-    UI -- "Append override" --> OVERRIDE
-    UI -- "Fetch applicant live" --> ORCH
-    PRIVACY -. "Schema boundary" .-> RECORD
+    O->>C: POST /api/v1/policy/execute<br/>applicationId + whole application
+    C->>R: INSERT applicationId, IN_PROGRESS
+    Note over C,R: Only applicationId crosses the schema boundary.<br/>The application payload is never stored.
+    R-->>C: committed
+    C-->>O: 202 {status: in-progress}
+    C-)W: decide(application in memory)
+    W->>P: SELECT current MAX(version)
+    P-->>W: residency lists + restriction list<br/>sampleEvery + version
+    W->>O: registry lookup through Module 00
+    O-->>W: existing-product result or unavailable
+    W->>R: UPDATE config version + machineOutcome<br/>outcome + ruleResults + DECIDED
+    W->>O: POST /api/v1/callbacks<br/>derived callback status + outcome
 ```
+
+This sequence shows the integration boundary: Team 02 receives applications and
+performs registry reads through Module 00. It never calls another team service
+and never reads another module's database.
+
+### 5.2 Entity Sources, Ownership, and Consumers
+
+```mermaid
+flowchart TB
+    subgraph SOURCES["Data sources outside the three entities"]
+        ORCH["Module 00 Orchestrator<br/>/execute: applicationId + application<br/>registry lookup response"]
+        SEED["Liquibase Day-0 seed"]
+        COMPLIANCE["Compliance officer<br/>Policy Configuration UI"]
+        OPERATOR["Policy operator<br/>Board / Queue / Override UI"]
+    end
+
+    subgraph MODULE["Team 02 Customer Policy - owned processing"]
+        ENGINE["Rule Engine<br/>application in memory + registry result + config"]
+    end
+
+    subgraph DB["Team 02 MySQL schema - owned persistence"]
+        CONFIG["policy_config<br/>policy lists + sampleEvery<br/>insert-only versions"]
+        RECORD["policy_record<br/>applicationId + decision evidence<br/>no applicant profile"]
+        OVERRIDE["override_log<br/>one append-only row per override"]
+    end
+
+    subgraph CONSUMERS["Downstream consumers"]
+        CALLBACK["Module 00 callback endpoint<br/>journey continues, rejects, or parks"]
+        SCREENS["Policy UI APIs<br/>board, detail, queue, reports"]
+    end
+
+    ORCH -. "Whole application: memory only" .-> ENGINE
+    ORCH -. "Registry result: memory only" .-> ENGINE
+    SEED -- "Creates version 1" --> CONFIG
+    COMPLIANCE -- "POST /config creates next version" --> CONFIG
+    CONFIG -- "Current version is rule input" --> ENGINE
+
+    ORCH -- "Persists applicationId only" --> RECORD
+    ENGINE -- "Persists derived outcomes + ruleResults<br/>and pins policy_config_version" --> RECORD
+    CONFIG -- "1 config version to many case records" --> RECORD
+
+    OPERATOR -- "Claim / release / queue decision<br/>through service API" --> RECORD
+    OPERATOR -- "Override through service API" --> OVERRIDE
+    RECORD -- "1 case to many override rows" --> OVERRIDE
+
+    RECORD -- "Read models" --> SCREENS
+    RECORD -- "Callback payload" --> CALLBACK
+    CALLBACK --> ORCH
+```
+
+Solid arrows into a table mean persisted data. Dashed arrows mean transient
+inputs used only in memory. The three database entities are owned exclusively by
+Team 02:
+
+| Entity | Created or changed by | Relationship to upstream/downstream |
+|---|---|---|
+| `policy_config` | Version 1 from Liquibase; later versions from a compliance officer through `POST /config` | Not supplied by the orchestrator; read by the rule engine; one version is pinned by many records |
+| `policy_record` | Created by `/execute`; completed by the worker; claim and decision fields changed by an operator | Stores only the upstream `applicationId` plus locally derived evidence; supplies screens and callbacks |
+| `override_log` | Appended only by an operator override | Child of `policy_record`; preserves the human before/after audit trail; never drives rules |
 
 ## 6. Table Definitions
 
@@ -318,14 +369,14 @@ Append-only audit trail for UC06. Queue decisions update the decision fields on
 | `old_outcome` | `VARCHAR(16)` | no | Current `policy_record.outcome`, read inside the override transaction | Outcome before the override |
 | `new_outcome` | `VARCHAR(16)` | no | Operator's override request | `APPROVED`, `REJECTED`, or `REFERRED` |
 | `reason` | `VARCHAR(1000)` | no | Operator's override request | Mandatory operator justification |
-| `operator_id` | `VARCHAR(100)` | no | Authenticated operator; request field until authentication is integrated | Authenticated operator identity |
+| `operator` | `VARCHAR(255)` | no | Upstream override request field | Required operator value, aligned exactly with the upstream contract |
 | `overridden_at` | `TIMESTAMP(6)` | no | Service/database clock when the override succeeds | Override time |
 
 Constraints and indexes:
 
 - FK to `policy_record`, delete restricted;
 - index `(application_id, overridden_at)`;
-- index `(operator_id, overridden_at)`.
+- index `(operator, overridden_at)`.
 
 An override transaction updates `policy_record.outcome`, decision metadata, and
 inserts one `override_log` row. It never changes `machine_outcome`,

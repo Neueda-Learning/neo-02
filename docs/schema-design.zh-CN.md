@@ -114,45 +114,95 @@ erDiagram
         varchar old_outcome
         varchar new_outcome
         varchar reason
-        varchar operator_id
+        varchar operator
         timestamp overridden_at
     }
 ```
 
 ## 5. 处理流程与数据归属
 
+### 5.1 单个 Application 的运行时调用顺序
+
 ```mermaid
-flowchart LR
-    ORCH["Module 00 Orchestrator"]
-    REGISTRY["Customer Registry"]
+sequenceDiagram
+    autonumber
+    participant O as Module 00 Orchestrator
+    participant C as Policy Controller
+    participant R as policy_record
+    participant W as Off-thread Policy Worker
+    participant P as policy_config
 
-    subgraph SERVICE["Team 02 - Customer Policy"]
-        API["POST /api/v1/policy/execute"]
-        WORKER["Off-thread Policy Worker"]
-        UI["操作员界面"]
-    end
-
-    subgraph DATABASE["MySQL 8.4 - neo_02"]
-        RECORD["policy_record<br/>case + ruleResults JSON"]
-        CONFIG["policy_config<br/>versioned policy JSON"]
-        OVERRIDE["override_log<br/>只追加审计记录"]
-        PRIVACY["不保存 application payload<br/>不保存 customer profile"]
-    end
-
-    ORCH -- "完整 application<br/>仅在内存中使用" --> API
-    API -- "INSERT IN_PROGRESS<br/>只保存 applicationId" --> RECORD
-    API -- "Commit 后返回 202" --> ORCH
-    RECORD -- "持久化 hand-off" --> WORKER
-    CONFIG -- "读取 MAX(version)" --> WORKER
-    WORKER -- "实时查询产品持有情况" --> REGISTRY
-    WORKER -- "保存 outcomes + ruleResults" --> RECORD
-    WORKER -- "POST /api/v1/callbacks" --> ORCH
-
-    UI -- "搜索、领取、决定" --> RECORD
-    UI -- "追加 override" --> OVERRIDE
-    UI -- "实时获取申请人详情" --> ORCH
-    PRIVACY -. "Schema 边界" .-> RECORD
+    O->>C: POST /api/v1/policy/execute<br/>applicationId + 完整 application
+    C->>R: INSERT applicationId, IN_PROGRESS
+    Note over C,R: 只有 applicationId 可以进入 schema。<br/>Application payload 永不落库。
+    R-->>C: committed
+    C-->>O: 202 {status: in-progress}
+    C-)W: decide(application，仅在内存中)
+    W->>P: SELECT 当前 MAX(version)
+    P-->>W: Residency lists + restriction list<br/>sampleEvery + version
+    W->>O: 通过 Module 00 查询 registry
+    O-->>W: Existing-product result 或 unavailable
+    W->>R: UPDATE config version + machineOutcome<br/>outcome + ruleResults + DECIDED
+    W->>O: POST /api/v1/callbacks<br/>推导出的 callback status + outcome
 ```
+
+这张时序图明确了 integration boundary：Team 02 从 Module 00 接收 application，也通过
+Module 00 查询 registry。它不会直接调用其他 team service，更不会读取其他 module 的
+数据库。
+
+### 5.2 Entity 的来源、归属与消费者
+
+```mermaid
+flowchart TB
+    subgraph SOURCES["三个 Entity 之外的数据来源"]
+        ORCH["Module 00 Orchestrator<br/>/execute: applicationId + application<br/>registry lookup response"]
+        SEED["Liquibase Day-0 seed"]
+        COMPLIANCE["Compliance officer<br/>Policy Configuration UI"]
+        OPERATOR["Policy operator<br/>Board / Queue / Override UI"]
+    end
+
+    subgraph MODULE["Team 02 Customer Policy - 自有处理逻辑"]
+        ENGINE["Rule Engine<br/>内存 application + registry result + config"]
+    end
+
+    subgraph DB["Team 02 MySQL schema - 自有持久化"]
+        CONFIG["policy_config<br/>policy lists + sampleEvery<br/>insert-only versions"]
+        RECORD["policy_record<br/>applicationId + decision evidence<br/>不保存 applicant profile"]
+        OVERRIDE["override_log<br/>每次 override 只追加一行"]
+    end
+
+    subgraph CONSUMERS["下游消费者"]
+        CALLBACK["Module 00 callback endpoint<br/>journey 继续、拒绝或暂停"]
+        SCREENS["Policy UI APIs<br/>board、detail、queue、reports"]
+    end
+
+    ORCH -. "完整 application：只在内存使用" .-> ENGINE
+    ORCH -. "Registry result：只在内存使用" .-> ENGINE
+    SEED -- "创建 version 1" --> CONFIG
+    COMPLIANCE -- "POST /config 创建下一版本" --> CONFIG
+    CONFIG -- "当前版本作为 rule input" --> ENGINE
+
+    ORCH -- "只持久化 applicationId" --> RECORD
+    ENGINE -- "持久化派生 outcomes + ruleResults<br/>并固定 policy_config_version" --> RECORD
+    CONFIG -- "一个 config version 对应多个 case records" --> RECORD
+
+    OPERATOR -- "通过 service API claim / release / queue decision" --> RECORD
+    OPERATOR -- "通过 service API override" --> OVERRIDE
+    RECORD -- "一个 case 对应多条 override rows" --> OVERRIDE
+
+    RECORD -- "Read models" --> SCREENS
+    RECORD -- "Callback payload" --> CALLBACK
+    CALLBACK --> ORCH
+```
+
+指向 table 的实线表示会持久化；虚线表示只在内存中使用的临时输入。三张数据库表都只由
+Team 02 拥有：
+
+| Entity | 谁创建或修改 | 与上下游的关系 |
+|---|---|---|
+| `policy_config` | Version 1 来自 Liquibase；后续版本由 compliance officer 通过 `POST /config` 创建 | 不由 orchestrator 提供；rule engine 读取；一个版本可以被多个 records 固定引用 |
+| `policy_record` | `/execute` 创建；worker 完成决策；operator 修改 claim 和 decision 字段 | 只保存上游 `applicationId` 和本地派生证据；为 screens 和 callbacks 提供数据 |
+| `override_log` | 只有 operator override 时追加 | `policy_record` 的 child；保存人工修改前后审计；不参与 rule evaluation |
 
 ## 6. 表定义
 
@@ -308,14 +358,14 @@ UC06 使用的 append-only audit trail。Queue decision 更新 `policy_record` �
 | `old_outcome` | `VARCHAR(16)` | 否 | Override transaction 内读取的当前 `policy_record.outcome` | Override 前的 outcome |
 | `new_outcome` | `VARCHAR(16)` | 否 | Operator 的 override request | `APPROVED`、`REJECTED` 或 `REFERRED` |
 | `reason` | `VARCHAR(1000)` | 否 | Operator 的 override request | Operator 必填 justification |
-| `operator_id` | `VARCHAR(100)` | 否 | 已认证 operator；auth 接入前暂来自 request field | 已认证的 operator identity |
+| `operator` | `VARCHAR(255)` | 否 | 上游 override request 的 `operator` 字段 | 必填；字段名和长度与上游 contract 完全对齐 |
 | `overridden_at` | `TIMESTAMP(6)` | 否 | Override 成功时的 service/database clock | Override 时间 |
 
 约束和索引：
 
 - FK → `policy_record`，禁止级联删除；
 - `(application_id, overridden_at)` 索引；
-- `(operator_id, overridden_at)` 索引。
+- `(operator, overridden_at)` 索引。
 
 Override transaction 更新 `policy_record.outcome` 和 decision metadata，并插入一条
 `override_log`。它绝不修改 `machine_outcome`、`policy_config_version`、
