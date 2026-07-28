@@ -11,7 +11,9 @@ public record PolicyRecordView(
 
     public static PolicyRecordView of(PolicyRecord row) {
         return new PolicyRecordView(
-                row.getApplicationId(), row.getProcessingStatus(), row.getReference(),
+                row.getApplicationId(),
+                row.getOutcome() == null ? row.getProcessingStatus() : row.getOutcome().name(),
+                row.getReference(),
                 row.getSubmittedAt());
     }
 }

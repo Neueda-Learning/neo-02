@@ -1,5 +1,10 @@
 package com.neobank.module.config;
 
+import com.neobank.module.integrations.registry.HttpRegistryClient;
+import com.neobank.module.integrations.registry.InMemoryRegistryClient;
+import com.neobank.module.integrations.registry.RegistryClient;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -17,5 +22,20 @@ public class AppConfig {
     @Bean
     public RestClient restClient(RestClient.Builder builder) {
         return builder.build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "registry", name = "mode", havingValue = "in-memory", matchIfMissing = true)
+    public RegistryClient inMemoryRegistryClient() {
+        return new InMemoryRegistryClient();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "registry", name = "mode", havingValue = "http")
+    public RegistryClient httpRegistryClient(
+            RestClient restClient,
+            @Value("${registry.lookup-url:}") String lookupUrl) {
+        return new HttpRegistryClient(restClient, lookupUrl);
     }
 }

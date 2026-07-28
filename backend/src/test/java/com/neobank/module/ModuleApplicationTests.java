@@ -61,7 +61,11 @@ class ModuleApplicationTests {
                 "applicationId": "%s",
                 "channel": "MOBILE_APP",
                 "submittedAt": "2026-07-25T09:14:00Z",
-                "applicant": {"fullName": "Maria Nowak", "dateOfBirth": "1996-04-11"},
+                "applicant": {
+                  "fullName": "Maria Nowak",
+                  "dateOfBirth": "1996-04-11",
+                  "taxResidencies": ["GB"]
+                },
                 "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 3000}
               }
             }
@@ -95,7 +99,8 @@ class ModuleApplicationTests {
     void executeEndpointAppearsInOpenApi() throws Exception {
         mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.paths['/api/v1/applications'].post").exists());
+                .andExpect(jsonPath("$.paths['/api/v1/applications'].post").exists())
+                .andExpect(jsonPath("$.paths['/cases/{applicationId}'].get").exists());
     }
 
     @Test
@@ -107,12 +112,12 @@ class ModuleApplicationTests {
                 // The UI's identity box reads team + service. A team that never sets SERVICE_TEAM
                 // ships a screen claiming to be team 01's, so the field has to actually be served.
                 .andExpect(jsonPath("$.team").value("Team 02"))
-                .andExpect(jsonPath("$.mockedDependencies", hasSize(2)))
-                .andExpect(jsonPath("$.mockedDependencies[0]").value("id-verification-provider"));
+                .andExpect(jsonPath("$.mockedDependencies", hasSize(1)))
+                .andExpect(jsonPath("$.mockedDependencies[0]").value("customer-registry"));
     }
 
     @Test
-    void anApplicationIsPersistedBeforeTheAcknowledgementAndReadableBack() throws Exception {
+    void anApplicationIsDecidedAndItsStoredDetailIsReadable() throws Exception {
         mvc.perform(post("/api/v1/applications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(application("IT-ONE")))
@@ -124,14 +129,28 @@ class ModuleApplicationTests {
 
         assertThat(records.findById("IT-ONE"))
                 .get()
-                .satisfies(row -> assertThat(row.getProcessingStatus()).isEqualTo("IN_PROGRESS"));
+                .satisfies(row -> {
+                    assertThat(row.getProcessingStatus()).isEqualTo("DECIDED");
+                    assertThat(row.getOutcome().name()).isEqualTo("APPROVED");
+                    assertThat(row.getPolicyConfigVersion()).isEqualTo(1);
+                    assertThat(row.getRuleResults()).hasSize(4);
+                });
 
         mvc.perform(get("/api/v1/applications"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].status")
-                        .value(org.hamcrest.Matchers.hasItem("IN_PROGRESS")))
+                        .value(org.hamcrest.Matchers.hasItem("APPROVED")))
                 .andExpect(jsonPath("$[?(@.applicationId == 'IT-ONE')].createdAt")
                         .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.notNullValue())));
+
+        mvc.perform(get("/cases/IT-ONE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("APPROVED"))
+                .andExpect(jsonPath("$.machineOutcome").value("APPROVED"))
+                .andExpect(jsonPath("$.policyConfigVersion").value(1))
+                .andExpect(jsonPath("$.ruleResults.length()").value(4))
+                .andExpect(jsonPath("$.ruleResults[3].reasonCodes[0]")
+                        .value("POL_ALL_CHECKS_PASSED"));
     }
 
     @Test
@@ -173,5 +192,14 @@ class ModuleApplicationTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("malformed request body")));
+    }
+
+    @Test
+    void unknownCaseIsAJson404() throws Exception {
+        mvc.perform(get("/cases/IT-MISSING"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("IT-MISSING")));
     }
 }

@@ -1,0 +1,20 @@
+{
+  "applicationId": "app-1234",
+  "correlationId": "uc02-app-1234",
+  "command": "process-application",
+  "application": {
+    "applicationId": "app-1234",
+    "channel": "MOBILE_APP",
+    "submittedAt": "2026-07-28T09:00:00Z",
+    "applicant": {
+      "fullName": "Maria Nowak",
+      "dateOfBirth": "1996-04-11",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["GB"]
+    },
+    "product": {
+      "productCode": "CREDIT_CARD_REWARDS",
+      "requestedCreditLimit": 3000
+    }
+  }
+}

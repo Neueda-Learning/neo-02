@@ -37,6 +37,12 @@ server {
     proxy_pass http://$api_backend:8080$uri$is_args$args;
   }
 
+  location ^~ ${BASE_PATH}/cases/ {
+    set $cases_backend ${BACKEND_HOST};
+    rewrite ^${BASE_PATH}(/cases/.*)$ $1 break;
+    proxy_pass http://$cases_backend:8080$uri$is_args$args;
+  }
+
   # UC07/UC08 — policy config read/write, same same-origin + fresh-DNS reasoning as /api/ above.
   location ^~ ${BASE_PATH}/config {
     set $config_backend ${BACKEND_HOST};

@@ -59,7 +59,7 @@ export default function PolicyConfigScreen() {
   // 生成对比摘要
   const generateComparisonSummary = () => {
     if (!selected || !compareWith) return null;
-    
+
     const supportedDiff = detectDifference(selected.supportedResidencies, compareWith.supportedResidencies);
     const excludedDiff = detectDifference(selected.excludedResidencies, compareWith.excludedResidencies);
     const restrictionDiff = selected.restrictionList.length - compareWith.restrictionList.length;

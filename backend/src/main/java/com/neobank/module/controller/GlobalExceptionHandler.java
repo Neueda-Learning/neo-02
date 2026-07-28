@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.neobank.module.service.PolicyConfigValidationException;
+import com.neobank.module.service.CaseNotFoundException;
 
 /**
  * Turns exceptions into a stable JSON error shape, so the front end and the orchestrator get a
@@ -87,6 +88,11 @@ public class GlobalExceptionHandler {
         error.put("field", field);
         error.put("message", message);
         return error;
+    }
+
+    @ExceptionHandler(CaseNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleCaseNotFound(CaseNotFoundException ex) {
+        return error(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

@@ -225,8 +225,8 @@ decision trace, and reporting source.
 | `outcome` | `VARCHAR(16)` | yes | Rule engine, queue reviewer, or override request | Current result: `APPROVED`, `REJECTED`, or `REFERRED` |
 | `machine_outcome` | `VARCHAR(16)` | yes | Customer Policy rule engine | Result of rules 1-3 before sampling or human intervention; never overwritten |
 | `reference` | `VARCHAR(32)` | no | Customer Policy service, generated before insert | Unique operator-facing reference |
-| `policy_config_version` | `INT` | yes | Current `policy_config` selected by the worker | FK to the config used; null until the worker begins |
-| `sampling_position` | `BIGINT` | yes | Customer Policy service sampling allocator | Unique first-decision position used by the every-X rule |
+| `policy_config_version` | `INT` | yes | Current `policy_config` selected by intake | FK to the config used; pinned before the `202` acknowledgement |
+| `sampling_position` | `BIGINT` | yes | Customer Policy intake allocator | Unique durable-acceptance position used by the every-X rule; pinned before the `202` acknowledgement |
 | `rule_results` | `JSON` | yes | Rule engine, derived from the in-memory application, policy config, and live registry result | Four embedded rule sections; null while processing |
 | `claimed_by` | `VARCHAR(100)` | yes | Authenticated operator from the claim request | Operator currently holding the referred case |
 | `claimed_at` | `TIMESTAMP(6)` | yes | Service/database clock when the claim succeeds | Claim time |
@@ -354,8 +354,9 @@ one document. The brief does not require independent CRUD, joins, or reports ove
 individual residency or restriction rows. Versioning the complete document also
 prevents a case from observing a mixture of old and new lists.
 
-Publishing a version runs in one transaction, locks the current maximum version,
-and inserts `MAX(version) + 1`. Existing versions are never updated or deleted.
+Publishing a version runs in one transaction, locks the immutable seeded
+`policy_config.version = 1` allocator row, reads the current maximum version, and
+inserts `MAX(version) + 1`. Existing versions are never updated or deleted.
 
 ### 6.3 `override_log`
 
@@ -387,17 +388,17 @@ inserts one `override_log` row. It never changes `machine_outcome`,
 The brief requires every Xth first-time policy decision to be referred and exposes
 the position in `ruleResults.sampling.position`.
 
-The worker allocates `sampling_position` in a short transaction:
+The request thread allocates `sampling_position` in the short intake transaction:
 
-1. lock the current `policy_config` row with `SELECT ... FOR UPDATE`;
-2. read `MAX(policy_record.sampling_position) + 1`;
-3. set the case's config version and sampling position;
+1. acquire UC07's shared `policy_config.version = 1` allocator lock;
+2. read the latest config version and `MAX(policy_record.sampling_position) + 1`;
+3. insert the case with that config version and sampling position;
 4. commit immediately;
-5. perform registry and rule calls outside the lock.
+5. return `202`, then perform registry and rule calls outside the lock.
 
 The unique constraint on `sampling_position` is the final concurrency guard. This
 keeps exact sampling inside `policy_record` rather than introducing a separate
-counter entity. Allocation must be tested with concurrent workers on MySQL 8.4.
+counter entity. Allocation must be tested with concurrent intakes on MySQL 8.4.
 
 A case is sampled when:
 
@@ -516,19 +517,23 @@ it uses. Do not invent `POL_MANUAL_REFERRED`.
 Before returning `202`:
 
 1. validate `applicationId` and `command = check-policy`;
-2. insert one `policy_record` with `processing_status = IN_PROGRESS`;
-3. on duplicate `application_id`, load the existing row instead;
-4. commit;
-5. return the locked acknowledgement body;
-6. trigger processing only after commit.
+2. acquire the shared UC07 config allocator lock, read the current config, and
+   allocate the next sampling position;
+3. insert one `policy_record` with `processing_status = IN_PROGRESS`, the config version,
+   and the sampling position;
+4. on duplicate `application_id`, load the existing row instead;
+5. commit;
+6. return the locked acknowledgement body;
+7. trigger processing only after commit.
 
 The request thread never calls a provider or evaluates a policy rule. The
 committed row is the durable hand-off. Recovery scans stranded `IN_PROGRESS` rows
 and fetches the application live from the orchestrator; the payload remains
 unstored.
 
-The decision worker stores config version, position, rule results, outcomes, and
-`processing_status = DECIDED` in one transaction, then sends the callback.
+The decision worker reads the pinned config version and position, then stores rule
+results, outcomes, and `processing_status = DECIDED` in one transaction before
+sending the callback.
 
 For repeated `/execute`:
 
