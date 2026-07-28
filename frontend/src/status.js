@@ -8,20 +8,16 @@ import { TONES, toneMapper } from './design-system';
 
 export const statusTone = toneMapper({
   ACCEPTED: TONES.POSITIVE,
+  APPROVED: TONES.POSITIVE,
   REJECTED: TONES.NEGATIVE,
   REFERRED: TONES.WARNING,
-  // Kept although the skeleton never stores it: a row is written only once the work is done. If
-  // you start recording an application before you have decided about it, this is already coloured.
-  'in-progress': TONES.INFO,
+  IN_PROGRESS: TONES.INFO,
 });
 
 /**
- * The statuses the board filters on — the three a module can answer with.
- *
- * `in-progress` is not here on purpose: the placeholder writes its row after the work, so no row
- * is ever in that state and a chip for it would always read zero. Add it if you change that.
+ * UC00 plus the three policy outcomes used by later use cases.
  */
-export const STATUSES = ['ACCEPTED', 'REJECTED', 'REFERRED'];
+export const STATUSES = ['IN_PROGRESS', 'APPROVED', 'REJECTED', 'REFERRED'];
 
 export function time(iso) {
   return iso ? new Date(iso).toLocaleTimeString() : '—';

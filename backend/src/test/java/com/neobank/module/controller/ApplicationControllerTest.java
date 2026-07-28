@@ -61,7 +61,7 @@ class ApplicationControllerTest {
                 .andExpect(jsonPath("$.command").value("process-application"));
 
         ArgumentCaptor<ApplicationRequest> sent = ArgumentCaptor.forClass(ApplicationRequest.class);
-        verify(applications).processApplicationAsync(sent.capture());
+        verify(applications).accept(sent.capture());
 
         // The typed model really is populated, not silently swallowed into nulls.
         ApplicationRequest request = sent.getValue();
@@ -104,7 +104,7 @@ class ApplicationControllerTest {
                                 """))
                 .andExpect(status().isAccepted());
 
-        verify(applications).processApplicationAsync(any(ApplicationRequest.class));
+        verify(applications).accept(any(ApplicationRequest.class));
     }
 
     @Test
@@ -119,7 +119,7 @@ class ApplicationControllerTest {
                                 """))
                 .andExpect(status().isAccepted());
 
-        verify(applications).processApplicationAsync(any(ApplicationRequest.class));
+        verify(applications).accept(any(ApplicationRequest.class));
     }
 
     @Test
@@ -144,7 +144,34 @@ class ApplicationControllerTest {
                 .andExpect(status().isAccepted());
 
         ArgumentCaptor<ApplicationRequest> sent = ArgumentCaptor.forClass(ApplicationRequest.class);
-        verify(applications).processApplicationAsync(sent.capture());
+        verify(applications).accept(sent.capture());
         assertThat(sent.getValue().application().applicant().fullName()).isEqualTo("Maria Nowak");
+    }
+
+    @Test
+    void rejectsAnEnvelopeWithNoCommand() throws Exception {
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"applicationId":"SIM-01","application":{"channel":"WEB"}}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("command")));
+
+        verifyNoInteractions(applications);
+    }
+
+    @Test
+    void rejectsAnApplicationIdThatCannotFitTheDurableKey() throws Exception {
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"applicationId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                 "command":"check-policy"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("applicationId")));
+
+        verifyNoInteractions(applications);
     }
 }

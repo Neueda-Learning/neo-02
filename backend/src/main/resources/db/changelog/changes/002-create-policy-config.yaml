@@ -1,0 +1,52 @@
+# policy_config — insert-only versioned policy document (see docs/schema-design.md §6.2).
+#
+# MAX(version) is the current version; existing rows are never updated or deleted so that old
+# cases can still be explained by the version they were decided under.
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-policy-config
+      author: neo-02
+      changes:
+        - createTable:
+            tableName: policy_config
+            columns:
+              - column:
+                  # Assigned by the service as MAX(version) + 1, not auto-increment.
+                  name: version
+                  type: INT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  # JSON array of uppercase ISO alpha-2 country codes.
+                  name: supported_residencies
+                  type: JSON
+                  constraints:
+                    nullable: false
+              - column:
+                  # JSON array of uppercase ISO alpha-2 country codes.
+                  name: excluded_residencies
+                  type: JSON
+                  constraints:
+                    nullable: false
+              - column:
+                  # JSON array of {fullName, dateOfBirth, reason} objects.
+                  name: restriction_list
+                  type: JSON
+                  constraints:
+                    nullable: false
+              - column:
+                  # Every Xth first-time decision is referred; must be at least 1.
+                  name: sample_every
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: effective_from
+                  type: TIMESTAMP(6)
+                  defaultValueComputed: CURRENT_TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: policy_config

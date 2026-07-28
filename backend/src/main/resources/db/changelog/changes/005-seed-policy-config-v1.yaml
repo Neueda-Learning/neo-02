@@ -1,0 +1,28 @@
+# Day-0 seed for policy_config version 1 (see docs/schema-design.md §6.2 example document).
+databaseChangeLog:
+  - changeSet:
+      id: 005-seed-policy-config-v1
+      author: neo-02
+      changes:
+        - insert:
+            tableName: policy_config
+            columns:
+              - column:
+                  name: version
+                  valueNumeric: 1
+              - column:
+                  name: supported_residencies
+                  value: '["GB","IE","PL","DE","FR","ES","NL"]'
+              - column:
+                  name: excluded_residencies
+                  value: '["US"]'
+              - column:
+                  name: restriction_list
+                  value: '[{"fullName":"Victor Sable","dateOfBirth":"1978-03-02","reason":"prior fraud loss"},{"fullName":"Dana Kovacs","dateOfBirth":"1984-11-19","reason":"account abuse"}]'
+              - column:
+                  name: sample_every
+                  valueNumeric: 7
+      rollback:
+        - delete:
+            tableName: policy_config
+            where: version = 1

@@ -1,0 +1,132 @@
+# policy_record — one durable row per orchestrator application: the case, queue item, decision
+# trace, and reporting source (see docs/schema-design.md §6.1). Only application_id crosses the
+# schema boundary from the inbound application payload; no applicant profile is stored.
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-policy-record
+      author: neo-02
+      changes:
+        - createTable:
+            tableName: policy_record
+            columns:
+              - column:
+                  # The id from the request envelope, not from inside the application object.
+                  name: application_id
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  # IN_PROGRESS | DECIDED; starts as IN_PROGRESS.
+                  name: processing_status
+                  type: VARCHAR(24)
+                  constraints:
+                    nullable: false
+              - column:
+                  # Current effective outcome: APPROVED | REJECTED | REFERRED; null while IN_PROGRESS.
+                  name: outcome
+                  type: VARCHAR(16)
+              - column:
+                  # Result of rules 1-3 before sampling or human intervention; never overwritten.
+                  name: machine_outcome
+                  type: VARCHAR(16)
+              - column:
+                  # Unique operator-facing reference, generated before insert (e.g. pol-01J2M8R4K9).
+                  name: reference
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  # FK to the policy_config version used; null until the worker begins.
+                  name: policy_config_version
+                  type: INT
+              - column:
+                  # Unique first-decision position used by the every-X sampling rule.
+                  name: sampling_position
+                  type: BIGINT
+              - column:
+                  # Four embedded rule sections (existingProduct, taxResidency, restrictionList, sampling).
+                  name: rule_results
+                  type: JSON
+              - column:
+                  name: claimed_by
+                  type: VARCHAR(100)
+              - column:
+                  name: claimed_at
+                  type: TIMESTAMP(6)
+              - column:
+                  name: decided_by
+                  type: VARCHAR(100)
+              - column:
+                  name: decided_at
+                  type: TIMESTAMP(6)
+              - column:
+                  name: decision_reason
+                  type: VARCHAR(1000)
+              - column:
+                  # Used by search ordering and date-range reports.
+                  name: submitted_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP(6)
+                  defaultValueComputed: CURRENT_TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP(6)
+                  defaultValueComputed: CURRENT_TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  # JPA optimistic-lock version for claim/decision races.
+                  name: lock_version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: policy_record
+            columnNames: reference
+            constraintName: uq_policy_record_reference
+        - addUniqueConstraint:
+            tableName: policy_record
+            columnNames: sampling_position
+            constraintName: uq_policy_record_sampling_position
+        - addForeignKeyConstraint:
+            baseTableName: policy_record
+            baseColumnNames: policy_config_version
+            referencedTableName: policy_config
+            referencedColumnNames: version
+            constraintName: fk_policy_record_policy_config_version
+            onDelete: RESTRICT
+        - createIndex:
+            tableName: policy_record
+            indexName: idx_policy_record_status_created
+            columns:
+              - column:
+                  name: processing_status
+              - column:
+                  name: created_at
+        - createIndex:
+            tableName: policy_record
+            indexName: idx_policy_record_outcome_submitted
+            columns:
+              - column:
+                  name: outcome
+              - column:
+                  name: submitted_at
+        - createIndex:
+            tableName: policy_record
+            indexName: idx_policy_record_claimed
+            columns:
+              - column:
+                  name: claimed_by
+              - column:
+                  name: claimed_at
+      rollback:
+        - dropTable:
+            tableName: policy_record

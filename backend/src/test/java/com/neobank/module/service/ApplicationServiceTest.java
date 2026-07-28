@@ -1,105 +1,90 @@
 package com.neobank.module.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-import com.neobank.module.integrations.orchestrator.Application;
+import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
-import com.neobank.module.integrations.orchestrator.OrchestratorClient;
-import com.neobank.module.model.Decision;
-import com.neobank.module.model.DemoShowcase;
-import com.neobank.module.repository.DemoShowcaseRepository;
+import com.neobank.module.model.PolicyRecord;
+import com.neobank.module.repository.PolicyRecordRepository;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
-/**
- * The three things the placeholder does, and the guard that keeps a failure reportable.
- *
- * <p>No Spring, no database, no HTTP — the service takes a request and calls two collaborators, so
- * the test is a handful of lines. Keep it that way as you replace the body: logic that needs a
- * running container to test is logic you will stop testing.</p>
- */
 class ApplicationServiceTest {
 
-    private DemoShowcaseRepository demoShowcase;
-    private OrchestratorClient orchestrator;
+    private PolicyRecordWriter writer;
+    private PolicyRecordRepository records;
+    private List<Runnable> scheduled;
     private ApplicationService service;
 
     @BeforeEach
     void setUp() {
-        demoShowcase = mock(DemoShowcaseRepository.class);
-        orchestrator = mock(OrchestratorClient.class);
-        // Runnable::run — the work happens inline, so there is nothing to wait for.
-        service = new ApplicationService(Runnable::run, demoShowcase, orchestrator);
-        when(demoShowcase.save(any(DemoShowcase.class))).thenAnswer(call -> call.getArgument(0));
+        writer = mock(PolicyRecordWriter.class);
+        records = mock(PolicyRecordRepository.class);
+        scheduled = new ArrayList<>();
+        Executor executor = scheduled::add;
+        service = new ApplicationService(executor, writer, records);
     }
 
     private static ApplicationRequest request(String id) {
-        Application application = new Application(
-                id, "MOBILE_APP", "2026-07-25T09:14:00Z",
-                new Application.Applicant("Maria Nowak", "1996-04-11", null, null, null, null,
-                        null, null, null, null, null),
-                null, null, null,
-                new Application.Product("CREDIT_CARD_REWARDS", 3000),
-                null, null);
-        return new ApplicationRequest(id, "corr-1", "process-application", application);
+        return new ApplicationRequest(id, "corr-1", "check-policy", null);
     }
 
     @Test
-    void storesTheApplicationAndReportsItAccepted() {
-        service.processApplication(request("SIM-01"));
+    void commitsTheRowBeforeSchedulingTheWorker() {
+        when(writer.createIfAbsent("SIM-01")).thenAnswer(invocation -> {
+            assertThat(scheduled).isEmpty();
+            return true;
+        });
 
-        ArgumentCaptor<DemoShowcase> saved = ArgumentCaptor.forClass(DemoShowcase.class);
-        verify(demoShowcase).save(saved.capture());
-        assertThat(saved.getValue().getApplicationId()).isEqualTo("SIM-01");
-        assertThat(saved.getValue().getStatus()).isEqualTo("ACCEPTED");
+        service.accept(request("SIM-01"));
 
-        verify(orchestrator).applicationStatusUpdate("SIM-01", Decision.ACCEPTED,
-                "hello world from processApplication");
+        verify(writer).createIfAbsent("SIM-01");
+        assertThat(scheduled).hasSize(1);
     }
 
     @Test
-    void theAsyncEntryPointDoesTheSameWorkThroughTheExecutor() {
-        service.processApplicationAsync(request("SIM-02"));
+    void duplicateRequestIsNotScheduledAgain() {
+        when(writer.createIfAbsent("SIM-01")).thenReturn(false);
 
-        verify(demoShowcase).save(any(DemoShowcase.class));
-        verify(orchestrator).applicationStatusUpdate(eq("SIM-02"), eq(Decision.ACCEPTED), any());
+        service.accept(request("SIM-01"));
+
+        assertThat(scheduled).isEmpty();
+        verify(records, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void aFailureIsStillReportedRatherThanLeavingTheJourneyToTimeOut() {
-        // The failure mode this guard exists for: a module that throws never reports, and the
-        // orchestrator then waits out its 30s timeout and ends the journey FAILED with nothing to
-        // explain it. REFERRED with a reason is far more useful than silence.
-        doThrow(new IllegalStateException("database on fire"))
-                .when(demoShowcase).save(any(DemoShowcase.class));
+    void schedulingFailureDoesNotUndoTheDurableAcceptance() {
+        PolicyRecordWriter successfulWriter = mock(PolicyRecordWriter.class);
+        when(successfulWriter.createIfAbsent("SIM-04")).thenReturn(true);
+        Executor rejectingExecutor = task -> {
+            throw new IllegalStateException("worker pool unavailable");
+        };
+        ApplicationService acceptingService =
+                new ApplicationService(rejectingExecutor, successfulWriter, records);
 
-        service.processApplication(request("SIM-03"));
+        acceptingService.accept(request("SIM-04"));
 
-        ArgumentCaptor<String> comment = ArgumentCaptor.forClass(String.class);
-        verify(orchestrator).applicationStatusUpdate(eq("SIM-03"), eq(Decision.REFERRED),
-                comment.capture());
-        assertThat(comment.getValue()).contains("database on fire");
-        verifyNoMoreInteractions(orchestrator);
+        verify(successfulWriter).createIfAbsent("SIM-04");
     }
 
     @Test
-    void theBoardShowsWhatWasStored() {
-        when(demoShowcase.findAllByOrderByCreatedAtDescIdDesc())
-                .thenReturn(java.util.List.of(new DemoShowcase("SIM-01", Decision.ACCEPTED)));
+    void boardShowsTheDurableInProgressRecord() {
+        PolicyRecord row = new PolicyRecord("SIM-01", "pol-1234567890");
+        when(records.findTop10ByOrderByCreatedAtDescApplicationIdDesc()).thenReturn(List.of(row));
 
-        assertThat(service.findAll())
-                .singleElement()
-                .satisfies(view -> {
-                    assertThat(view.applicationId()).isEqualTo("SIM-01");
-                    assertThat(view.status()).isEqualTo("ACCEPTED");
-                });
+        List<PolicyRecordView> result = service.findAll();
+
+        assertThat(result).singleElement().satisfies(view -> {
+            assertThat(view.applicationId()).isEqualTo("SIM-01");
+            assertThat(view.status()).isEqualTo("IN_PROGRESS");
+            assertThat(view.reference()).isEqualTo("pol-1234567890");
+        });
     }
 }

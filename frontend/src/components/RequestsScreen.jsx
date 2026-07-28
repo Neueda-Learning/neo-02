@@ -18,9 +18,7 @@ const FILTERS = ['All', ...STATUSES];
 /**
  * Everything this module has answered.
  *
- * ⚠️ Three columns, because the placeholder table behind it has three columns. When you replace
- * `demo_showcase` with your own table, this is the screen that shows it off — the operator UI is a
- * graded deliverable, so add the columns, filters and detail views your business topic needs.
+ * UC00's durable intake board. A row appears as IN_PROGRESS as soon as the request commits.
  *
  * The board follows the platform shape (design-system/DESIGN.md § "Board"): a header stating the
  * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
@@ -56,7 +54,8 @@ export default function RequestsScreen({ requests, error, info }) {
       tight: true,
       render: (r) => <Badge tone={statusTone(r.status)}>{r.status}</Badge>,
     },
-    { key: 'createdAt', header: 'Answered', render: (r) => time(r.createdAt) },
+    { key: 'reference', header: 'Reference', mono: true },
+    { key: 'createdAt', header: 'Submitted', render: (r) => time(r.createdAt) },
   ];
 
   return (
@@ -82,7 +81,7 @@ export default function RequestsScreen({ requests, error, info }) {
 
       <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
         <MetricTile label="Seen" value={requests.length} />
-        <MetricTile label="Accepted" value={counts.ACCEPTED ?? 0} tone="positive" />
+        <MetricTile label="In progress" value={counts.IN_PROGRESS ?? 0} tone="info" />
       </Grid>
 
       <Toolbar>
