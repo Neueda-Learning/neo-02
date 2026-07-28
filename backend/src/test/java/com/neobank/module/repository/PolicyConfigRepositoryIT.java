@@ -20,7 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import com.neobank.module.model.PolicyConfig;
 import com.neobank.module.service.PolicyConfigWriter;
 
-/** Verifies the UC07 entity, JSON converters and Liquibase v1 seed against real MySQL. */
+/** Verifies the UC07/UC08 entity, JSON converters and Liquibase v1 seed against real MySQL. */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
 class PolicyConfigRepositoryIT {
@@ -99,5 +99,39 @@ class PolicyConfigRepositoryIT {
 
     private PolicyConfig current() {
         return configs.findFirstByOrderByVersionDesc().orElseThrow();
+    }
+
+    // ── UC08 tests ────────────────────────────────────────────────────────────
+
+    @Test
+    void versionsAreReturnedOldestFirst() {
+        PolicyConfig published = writer.publish(List.of("GB", "FR"), List.of("US"), List.of(), 37);
+
+        List<PolicyConfig> all = configs.findAllByOrderByVersionAsc();
+
+        assertThat(all.get(0).getVersion()).isEqualTo(1);
+        assertThat(all.get(all.size() - 1).getVersion()).isEqualTo(published.getVersion());
+        assertThat(all).extracting(PolicyConfig::getVersion).isSorted();
+    }
+
+    @Test
+    void historyIsNeverEmpty_seedGuaranteesV1() {
+        List<PolicyConfig> all = configs.findAllByOrderByVersionAsc();
+        assertThat(all).isNotEmpty();
+        assertThat(all.get(0).getVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void afterUc07DemoInsertHistoryShowsV1AndV2WithV2Current() {
+        PolicyConfig published = writer.publish(
+                List.of("GB", "IE"), List.of("US"),
+                List.of(new PolicyConfig.RestrictionEntry("Victor Sable", "1978-03-02", "prior fraud loss")),
+                41);
+
+        List<PolicyConfig> all = configs.findAllByOrderByVersionAsc();
+        int maxVersion = all.stream().mapToInt(PolicyConfig::getVersion).max().orElseThrow();
+
+        assertThat(all.get(0).getVersion()).isEqualTo(1);
+        assertThat(maxVersion).isEqualTo(published.getVersion());
     }
 }

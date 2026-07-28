@@ -37,6 +37,13 @@ server {
     proxy_pass http://$api_backend:8080$uri$is_args$args;
   }
 
+  # UC07/UC08 — policy config read/write, same same-origin + fresh-DNS reasoning as /api/ above.
+  location ^~ ${BASE_PATH}/config {
+    set $config_backend ${BACKEND_HOST};
+    rewrite ^${BASE_PATH}(/config.*)$ $1 break;
+    proxy_pass http://$config_backend:8080$uri$is_args$args;
+  }
+
   # Exact matches, so they also beat the regex below. The ALB target group health-checks
   # ${BASE_PATH}/health directly, bypassing its own routing rules — if this path and the
   # target group's HealthCheckPath ever disagree, every task is killed as unhealthy and

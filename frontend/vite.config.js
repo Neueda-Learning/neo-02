@@ -22,6 +22,7 @@ export default defineConfig({
       '/api': { target: BACKEND, changeOrigin: true },
       '/health': { target: BACKEND, changeOrigin: true },
       '/info': { target: BACKEND, changeOrigin: true },
+      '/config': { target: BACKEND, changeOrigin: true },
     },
   },
 });

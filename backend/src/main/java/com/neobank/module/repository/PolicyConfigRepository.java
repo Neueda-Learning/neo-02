@@ -1,5 +1,6 @@
 package com.neobank.module.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,6 +12,9 @@ import com.neobank.module.model.PolicyConfig;
 import jakarta.persistence.LockModeType;
 
 public interface PolicyConfigRepository extends JpaRepository<PolicyConfig, Integer> {
+
+    /** UC08 — all versions oldest first; never empty (seed guarantees v1). */
+    List<PolicyConfig> findAllByOrderByVersionAsc();
 
     /**
      * Version 1 is immutable and always present, so it is a stable row-level mutex for allocating
