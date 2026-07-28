@@ -1,630 +1,624 @@
-# Customer Policy Schema Design
+# Customer Policy Three-Table Schema Design
 
-## 1. Purpose
+[中文版](./schema-design.zh-CN.md)
 
-This document proposes the database schema for Team 02, Customer Policy. It is a
-design and implementation guide only; it does not create migrations or change the
-running application.
+## 1. Decision
 
-The design supports the following core capabilities:
-
-- evaluate one customer-policy case per orchestrator application;
-- check existing product ownership through the customer registry;
-- evaluate tax residency policy;
-- match against the bank-owned restriction list;
-- refer sampled or indeterminate cases for manual review;
-- record manual decisions and later overrides;
-- edit versioned policy configuration and inspect its history;
-- search cases and report rejection patterns;
-- retry and observe callback delivery without changing the orchestrator contract.
-
-## 2. Sources and Binding Constraints
-
-This design is based on:
-
-- the repository `AGENTS.md` and `README.md`;
-- the current Java contract under
-  `integrations/orchestrator`;
-- the Team 02 Customer Policy v5 student brief;
-- the capstone kickoff material.
-
-The Team 02 v5 brief is the source of truth for the module contract. Where the
-current repository template conflicts with the brief, this design follows the
+Team 02 will use the three-entity starting point from the Customer Policy v5
 brief:
 
-- inbound: `POST /api/v1/policy/execute`;
-- envelope command: `check-policy`;
-- envelope content: `applicationId`, `correlationId`, `command`, the whole
-  `application`, and the v5 `outputs` block;
-- immediate response: HTTP `202` with `status`, `applicationId`, and `command`;
-- off-thread callback: `POST /api/v1/callbacks`;
-- business outcome: `APPROVED`, `REJECTED`, or `REFERRED`.
+1. `policy_record` — one row per `applicationId`;
+2. `policy_config` — one insert-only row per complete policy version;
+3. `override_log` — one append-only row per manual override.
 
-Callback status and journey effect are mapped independently from the outcome:
+This design deliberately does not split residency lists, restriction entries,
+rule results, sampling state, or general operator actions into separate tables.
+The brief warns against beginning with an over-complicated model, and all locked
+UC00-UC08 requirements can be satisfied by these three tables.
+
+## 2. Source of Truth and Contract
+
+The Team 02 Customer Policy v5 brief is the source of truth for this design:
+
+- inbound: `POST /api/v1/policy/execute`;
+- command: `check-policy`;
+- envelope: `applicationId`, `correlationId`, `command`, the whole
+  `application`, and the v5 `outputs` block;
+- immediate acknowledgement: HTTP `202` with `status`, `applicationId`, and
+  `command`;
+- off-thread callback: `POST /api/v1/callbacks`;
+- outcomes: `APPROVED`, `REJECTED`, and `REFERRED`.
+
+Callback mapping:
 
 | Situation | Outcome | Callback status | Journey effect |
 |---|---|---|---|
-| Automatic approval | `APPROVED` | `completed` | Run the next step |
-| Automatic rejection | `REJECTED` | `rejected` | End the journey as rejected |
-| Automatic referral | `REFERRED` | `application-manual` | Park for a person |
+| Automatic approval | `APPROVED` | `completed` | Continue to the next step |
+| Automatic rejection | `REJECTED` | `rejected` | End the journey |
+| Automatic referral | `REFERRED` | `application-manual` | Park for review |
 | Queue decision or override | `APPROVED` or `REJECTED` | `local-manual` | Resume with the human outcome |
 
-The database is MySQL 8.4. Liquibase owns the schema and Hibernate uses
-`ddl-auto=validate`. Changesets must therefore be append-only.
+Only the orchestrator calls `/execute`. The full application is available to the
+worker, but the application payload is never stored. Applicant detail is fetched
+live through this module's orchestrator proxy.
 
-The service must not persist the application payload or create a local customer
-record. Applicant details shown to an operator must be fetched live from the
-orchestrator by `application_id`.
+The target database is MySQL 8.4. Liquibase owns the schema and Hibernate uses
+`ddl-auto=validate`; migrations are append-only.
 
-## 3. Design Decisions
+## 3. Why Three Tables Are Enough
 
-### 3.1 One case per application
+| Use case | Storage needed | How the three-table model supports it |
+|---|---|---|
+| UC00 Process Application | `policy_record` | Insert one `IN_PROGRESS` row before returning `202`; unique `application_id` provides idempotency |
+| UC01 Search Cases | `policy_record` | Search IDs locally; resolve names and hydrate applicant details live through the orchestrator; limit 10 |
+| UC02 Review Decision | `policy_record` | Read `outcome`, `machine_outcome`, pinned config version, and `rule_results` |
+| UC03 View Applicant | No applicant table | Proxy the orchestrator using `application_id`; store nothing locally |
+| UC04 Referral Queue | `policy_record` | Use outcome, claim fields, human decision fields, and optimistic locking |
+| UC05 Rejection Patterns | `policy_record` | Aggregate reason codes from `rule_results` JSON over `submitted_at` |
+| UC06 Override Case | `policy_record` + `override_log` | Update current outcome and append the immutable before/after audit row |
+| UC07 Edit Policy Config | `policy_config` | Insert a complete new version; never update an old one |
+| UC08 Config History | `policy_config` | Read all versions; `MAX(version)` is current |
 
-`policy_case.application_id` is copied from the request envelope, not from the
-nested application object. A unique constraint makes request handling idempotent:
-re-delivery must load the existing case instead of creating a second decision.
+Candidate rules UC09 and UC10 can add fields inside the versioned config document
+and new sections inside `rule_results` without creating a new table solely for
+each rule.
 
-### 3.2 Immutable configuration versions
+### Small field-level additions to the suggested ER
 
-Every evaluated case points to the exact configuration version used. A published
-version is immutable. Editing policy creates a new version rather than modifying
-the version attached to historical cases.
+The design keeps the brief's three entities but adds a few columns needed to make
+its acceptance criteria enforceable:
 
-This allows the bank to answer: "What policy was in effect when this decision was
-made?"
+| Addition | Justification |
+|---|---|
+| `processing_status` | UC00 requires a durable `IN_PROGRESS` state before the outcome exists |
+| `sampling_position` | UC02 exposes the exact first-decision position and sampling must be idempotent |
+| `created_at`, `updated_at` | Operational ordering and recovery cannot depend on applicant data |
+| `lock_version` | UC04 requires a deterministic `409` when two operators claim the same case |
+| `override_log.id` | Every append-only audit event needs a stable primary key |
 
-### 3.3 Normalize data that is filtered, joined, or aggregated
+These are columns on the three suggested entities, not additional domain tables.
 
-Residency rules, restriction entries, rule outcomes, and audit actions are stored
-as rows. They are not JSON because the application needs to:
-
-- enforce uniqueness and foreign keys;
-- search individual values;
-- aggregate rejection reasons;
-- index restriction-list matching;
-- retain a clear audit history.
-
-JSON is not required in the core schema. If a future rule engine produces
-diagnostic data that has no stable shape, a small JSON evidence snapshot may be
-added later, but it must not contain the applicant payload or PII.
-
-### 3.4 Do not use MySQL `ENUM`
-
-Status and decision fields use `VARCHAR`. Java enums and service validation define
-their allowed values. This avoids a database migration whenever a local workflow
-state is added and keeps H2 tests compatible with MySQL.
-
-### 3.5 Separate machine and human outcomes
-
-`machine_outcome` preserves the rule engine's original result. `outcome` is the
-result currently reported by the module. Manual review or override may change
-`outcome`, but must not overwrite `machine_outcome`.
-
-### 3.6 Store rule facts, not applicant data
-
-`policy_rule_result` records which rule ran, its outcome, and its reason code. It
-does not store names, dates of birth, addresses, tax-residency arrays, registry
-responses, or the inbound JSON.
-
-For a restriction-list match, it may reference the bank-owned
-`policy_restriction_entry`. That entry is policy configuration, not a copy of the
-applicant.
-
-## 4. Diagrams
-
-### 4.1 Entity Relationship Diagram
+## 4. Entity Relationship Diagram
 
 ```mermaid
 erDiagram
-    POLICY_CONFIG ||--o{ POLICY_RESIDENCY_RULE : contains
-    POLICY_CONFIG ||--o{ POLICY_RESTRICTION_ENTRY : contains
-    POLICY_CONFIG ||--|| POLICY_SAMPLING_COUNTER : sequences
-    POLICY_CONFIG ||--o{ POLICY_CASE : governs
-    POLICY_CASE ||--o{ POLICY_RULE_RESULT : produces
-    POLICY_RESTRICTION_ENTRY o|--o{ POLICY_RULE_RESULT : matched_by
-    POLICY_CASE ||--o{ POLICY_ACTION_LOG : audited_by
+    POLICY_CONFIG ||--o{ POLICY_RECORD : "version pinned by"
+    POLICY_RECORD ||--o{ OVERRIDE_LOG : "override audited by"
 
-    POLICY_CONFIG {
-        int version PK
-        varchar lifecycle_status
-        int sample_every
-        timestamp effective_from
-        varchar created_by
-        varchar change_reason
-        timestamp created_at
-    }
-
-    POLICY_RESIDENCY_RULE {
-        int config_version PK,FK
-        char country_code PK
-        varchar disposition
-    }
-
-    POLICY_RESTRICTION_ENTRY {
-        bigint id PK
-        int config_version FK
-        varchar full_name
-        varchar normalized_name
-        date date_of_birth
-        varchar restriction_reason
-    }
-
-    POLICY_SAMPLING_COUNTER {
-        int config_version PK,FK
-        bigint last_ordinal
-        bigint lock_version
-    }
-
-    POLICY_CASE {
-        bigint id PK
-        varchar application_id UK
-        varchar reference UK
-        int config_version FK
-        bigint sampling_ordinal
-        varchar workflow_status
-        varchar machine_outcome
+    POLICY_RECORD {
+        varchar application_id PK
+        varchar processing_status
         varchar outcome
-        varchar current_reason_code
-        varchar callback_status
-        varchar callback_state
-        int callback_attempts
-        timestamp next_callback_at
+        varchar machine_outcome
+        varchar reference UK
+        int policy_config_version FK
+        bigint sampling_position UK
+        json rule_results
         varchar claimed_by
         timestamp claimed_at
-        timestamp received_at
+        varchar decided_by
         timestamp decided_at
+        varchar decision_reason
+        timestamp submitted_at
+        timestamp created_at
         timestamp updated_at
         bigint lock_version
     }
 
-    POLICY_RULE_RESULT {
-        bigint id PK
-        bigint policy_case_id FK
-        varchar rule_code
-        varchar outcome
-        varchar reason_code
-        bigint restriction_entry_id FK
-        timestamp evaluated_at
+    POLICY_CONFIG {
+        int version PK
+        json supported_residencies
+        json excluded_residencies
+        json restriction_list
+        int sample_every
+        timestamp effective_from
     }
 
-    POLICY_ACTION_LOG {
+    OVERRIDE_LOG {
         bigint id PK
-        bigint policy_case_id FK
-        varchar action_type
+        varchar application_id FK
         varchar old_outcome
         varchar new_outcome
-        varchar previous_reason_code
-        varchar new_reason_code
-        varchar rationale
-        varchar actor_id
-        timestamp created_at
+        varchar reason
+        varchar operator
+        timestamp overridden_at
     }
 ```
 
-### 4.2 Processing and Data Ownership
+## 5. Processing and Data Ownership
+
+### 5.1 One Application: Runtime Call Sequence
 
 ```mermaid
-flowchart LR
-    ORCH["Module 00 Orchestrator"]
-    REGISTRY["Customer Registry"]
+sequenceDiagram
+    autonumber
+    participant O as Module 00 Orchestrator
+    participant C as Policy Controller
+    participant R as policy_record
+    participant W as Off-thread Policy Worker
+    participant P as policy_config
 
-    subgraph SERVICE["Team 02 - Customer Policy"]
-        API["POST /api/v1/policy/execute"]
-        WORKER["Policy Worker"]
-        ENGINE["Decision Rules"]
-        UI["Operator UI"]
-    end
-
-    subgraph DATABASE["MySQL 8.4 - neo_02 schema"]
-        CONFIG["Policy Config<br/>Residency Rules<br/>Restriction Entries"]
-        CASES["Policy Cases"]
-        RESULTS["Rule Results"]
-        ACTIONS["Manual Action Log"]
-        BOUNDARY["No application payload<br/>or customer profile"]
-    end
-
-    ORCH -- "Full application<br/>(used in memory only)" --> API
-    API -- "INSERT one IN_PROGRESS case<br/>(applicationId only)" --> CASES
-    CASES -- "Committed hand-off" --> WORKER
-    API -- "202 after case commit" --> ORCH
-
-    WORKER -- "Live product-ownership lookup" --> REGISTRY
-    WORKER --> ENGINE
-    CONFIG -- "Read effective version" --> ENGINE
-    ENGINE -- "Store derived decision" --> CASES
-    ENGINE -- "Store rule outcomes" --> RESULTS
-    WORKER -- "POST /api/v1/callbacks" --> ORCH
-
-    UI -- "Search and claim cases" --> CASES
-    UI -- "Inspect outcomes" --> RESULTS
-    UI -- "Record review or override" --> ACTIONS
-    UI -- "Fetch applicant details live" --> ORCH
-
-    BOUNDARY -. "Privacy boundary" .-> CASES
+    O->>C: POST /api/v1/policy/execute<br/>applicationId + whole application
+    C->>R: INSERT applicationId, IN_PROGRESS
+    Note over C,R: Only applicationId crosses the schema boundary.<br/>The application payload is never stored.
+    R-->>C: committed
+    C-->>O: 202 {status: in-progress}
+    C-)W: decide(application in memory)
+    W->>P: SELECT current MAX(version)
+    P-->>W: residency lists + restriction list<br/>sampleEvery + version
+    W->>O: registry lookup through Module 00
+    O-->>W: existing-product result or unavailable
+    W->>R: UPDATE config version + machineOutcome<br/>outcome + ruleResults + DECIDED
+    W->>O: POST /api/v1/callbacks<br/>derived callback status + outcome
 ```
 
-The request payload is available to the worker only while rules are being
-evaluated. MySQL stores the application ID, policy version, derived outcomes, and
-audit metadata. Applicant details remain owned by the orchestrator and are fetched
-live when an operator opens a case.
+This sequence shows the integration boundary: Team 02 receives applications and
+performs registry reads through Module 00. It never calls another team service
+and never reads another module's database.
 
-## 5. Table Definitions
+### 5.2 Entity Sources, Ownership, and Consumers
 
-### 5.1 `policy_config`
+```mermaid
+flowchart TB
+    subgraph SOURCES["Data sources outside the three entities"]
+        ORCH["Module 00 Orchestrator<br/>/execute: applicationId + application<br/>registry lookup response"]
+        SEED["Liquibase Day-0 seed"]
+        COMPLIANCE["Compliance officer<br/>Policy Configuration UI"]
+        OPERATOR["Policy operator<br/>Board / Queue / Override UI"]
+    end
 
-One row represents one complete policy version.
+    subgraph MODULE["Team 02 Customer Policy - owned processing"]
+        ENGINE["Rule Engine<br/>application in memory + registry result + config"]
+    end
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `version` | `INT` | no | Primary key; business version such as `1`, `2`, `3` |
-| `lifecycle_status` | `VARCHAR(16)` | no | `DRAFT`, `PUBLISHED`, or `RETIRED` |
-| `sample_every` | `INT` | no | Refer every Nth eligible case; must be greater than zero |
-| `effective_from` | `TIMESTAMP(6)` | yes | Null for draft; required when published |
-| `created_by` | `VARCHAR(100)` | no | Operator or system identity |
-| `change_reason` | `VARCHAR(500)` | no | Required explanation for the new version |
-| `created_at` | `TIMESTAMP(6)` | no | Defaults to `CURRENT_TIMESTAMP(6)` |
+    subgraph DB["Team 02 MySQL schema - owned persistence"]
+        CONFIG["policy_config<br/>policy lists + sampleEvery<br/>insert-only versions"]
+        RECORD["policy_record<br/>applicationId + decision evidence<br/>no applicant profile"]
+        OVERRIDE["override_log<br/>one append-only row per override"]
+    end
 
-Recommended indexes:
+    subgraph CONSUMERS["Downstream consumers"]
+        CALLBACK["Module 00 callback endpoint<br/>journey continues, rejects, or parks"]
+        SCREENS["Policy UI APIs<br/>board, detail, queue, reports"]
+    end
 
-- primary key on `version`;
-- index on `(lifecycle_status, effective_from)`.
+    ORCH -. "Whole application: memory only" .-> ENGINE
+    ORCH -. "Registry result: memory only" .-> ENGINE
+    SEED -- "Creates version 1" --> CONFIG
+    COMPLIANCE -- "POST /config creates next version" --> CONFIG
+    CONFIG -- "Current version is rule input" --> ENGINE
 
-Rules:
+    ORCH -- "Persists applicationId only" --> RECORD
+    ENGINE -- "Persists derived outcomes + ruleResults<br/>and pins policy_config_version" --> RECORD
+    CONFIG -- "1 config version to many case records" --> RECORD
 
-- only one published version may be effective at a given point in time;
-- after publication, policy content must not be updated;
-- a new version must copy the previous version's rules before edits are applied;
-- `sample_every` belongs here because it is part of the decision policy.
+    OPERATOR -- "Claim / release / queue decision<br/>through service API" --> RECORD
+    OPERATOR -- "Override through service API" --> OVERRIDE
+    RECORD -- "1 case to many override rows" --> OVERRIDE
 
-MySQL does not provide a simple portable partial unique index for "one active
-row". Publish must therefore run in one transaction, lock the relevant config
-rows, validate the timeline, and then publish the new version.
+    RECORD -- "Read models" --> SCREENS
+    RECORD -- "Callback payload" --> CALLBACK
+    CALLBACK --> ORCH
+```
 
-### 5.2 `policy_residency_rule`
+Solid arrows into a table mean persisted data. Dashed arrows mean transient
+inputs used only in memory. The three database entities are owned exclusively by
+Team 02:
 
-One row classifies one ISO country code in one policy version.
+| Entity | Created or changed by | Relationship to upstream/downstream |
+|---|---|---|
+| `policy_config` | Version 1 from Liquibase; later versions from a compliance officer through `POST /config` | Not supplied by the orchestrator; read by the rule engine; one version is pinned by many records |
+| `policy_record` | Created by `/execute`; completed by the worker; claim and decision fields changed by an operator | Stores only the upstream `applicationId` plus locally derived evidence; supplies screens and callbacks |
+| `override_log` | Appended only by an operator override | Child of `policy_record`; preserves the human before/after audit trail; never drives rules |
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `config_version` | `INT` | no | FK to `policy_config.version` |
-| `country_code` | `CHAR(2)` | no | Uppercase ISO 3166-1 alpha-2 code |
-| `disposition` | `VARCHAR(16)` | no | `SUPPORTED` or `EXCLUDED` |
+## 6. Table Definitions
 
-Primary key: `(config_version, country_code)`.
+### 6.1 `policy_record`
 
-Decision semantics:
+One durable row per orchestrator application. This is the case, queue item,
+decision trace, and reporting source.
 
-- `EXCLUDED` is an explicit rejection using
-  `POL_TAX_RESIDENCY_EXCLUDED`;
-- `SUPPORTED` passes the residency rule;
-- a country absent from the version is unsupported and uses
-  `POL_TAX_RESIDENCY_UNSUPPORTED`;
-- if an applicant has several tax residencies, any excluded country wins;
-- all countries must be supported for the rule to pass.
+| Column | MySQL type | Null | Source | Constraint / meaning |
+|---|---|---:|---|---|
+| `application_id` | `VARCHAR(64)` | no | Orchestrator `/execute` envelope | Primary key; the only applicant-related identifier stored |
+| `processing_status` | `VARCHAR(24)` | no | Customer Policy service workflow | `IN_PROGRESS` or `DECIDED`; starts as `IN_PROGRESS` |
+| `outcome` | `VARCHAR(16)` | yes | Rule engine, queue reviewer, or override request | Current result: `APPROVED`, `REJECTED`, or `REFERRED` |
+| `machine_outcome` | `VARCHAR(16)` | yes | Customer Policy rule engine | Result of rules 1-3 before sampling or human intervention; never overwritten |
+| `reference` | `VARCHAR(32)` | no | Customer Policy service, generated before insert | Unique operator-facing reference |
+| `policy_config_version` | `INT` | yes | Current `policy_config` selected by the worker | FK to the config used; null until the worker begins |
+| `sampling_position` | `BIGINT` | yes | Customer Policy service sampling allocator | Unique first-decision position used by the every-X rule |
+| `rule_results` | `JSON` | yes | Rule engine, derived from the in-memory application, policy config, and live registry result | Four embedded rule sections; null while processing |
+| `claimed_by` | `VARCHAR(100)` | yes | Authenticated operator from the claim request | Operator currently holding the referred case |
+| `claimed_at` | `TIMESTAMP(6)` | yes | Service/database clock when the claim succeeds | Claim time |
+| `decided_by` | `VARCHAR(100)` | yes | Authenticated operator from the manual-decision or override request | Human decision maker; null when the machine result stands |
+| `decided_at` | `TIMESTAMP(6)` | yes | Service/database clock when the human decision or override succeeds | Human decision or override time |
+| `decision_reason` | `VARCHAR(1000)` | yes | Operator's manual-decision or override request | Mandatory reason for a human decision |
+| `submitted_at` | `TIMESTAMP(6)` | no | Orchestrator `application.submittedAt` (brief-listed; see note below) | Submission timestamp used by search ordering and date-range reports |
+| `created_at` | `TIMESTAMP(6)` | no | MySQL `CURRENT_TIMESTAMP(6)` default on intake insert | Local row creation time |
+| `updated_at` | `TIMESTAMP(6)` | no | Customer Policy service/MySQL update timestamp | Latest case update |
+| `lock_version` | `BIGINT` | no | JPA optimistic locking | Optimistic-lock version for claim/decision races |
 
-The composite primary key prevents a country being both supported and excluded
-inside the same version.
-
-### 5.3 `policy_restriction_entry`
-
-The bank-owned restriction list, versioned with policy configuration.
-
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `id` | `BIGINT` | no | Auto-increment primary key |
-| `config_version` | `INT` | no | FK to `policy_config.version` |
-| `full_name` | `VARCHAR(200)` | no | Display value entered by an authorised operator |
-| `normalized_name` | `VARCHAR(200)` | no | Canonical value used for exact matching |
-| `date_of_birth` | `DATE` | no | Validated configuration value |
-| `restriction_reason` | `VARCHAR(500)` | no | Internal reason for the restriction |
-| `created_at` | `TIMESTAMP(6)` | no | Defaults to `CURRENT_TIMESTAMP(6)` |
+`submitted_at` is the only field with an unresolved source-of-truth conflict:
+the suggested ER and the queue/reporting use cases include it, while UC00 says
+that only `applicationId` from the application payload is persisted. Until the
+instructor confirms the intended interpretation, either omit `submitted_at` and
+use local `created_at` for ordering/reporting, or obtain explicit approval to
+persist `application.submittedAt`.
 
 Constraints and indexes:
 
-- unique `(config_version, normalized_name, date_of_birth)`;
-- matching index `(config_version, normalized_name, date_of_birth)`;
-- FK to `policy_config` with delete restricted.
+- primary key `application_id`;
+- unique `reference`;
+- unique `sampling_position`;
+- FK `policy_config_version -> policy_config.version`, delete restricted;
+- index `(processing_status, created_at)`;
+- index `(outcome, submitted_at)`;
+- index `(claimed_by, claimed_at)`;
+- index `policy_config_version`.
 
-Name normalization must be one deterministic application-level function, tested
-with case, repeated whitespace, punctuation, and Unicode input. The database
-stores its result but does not invent a second normalization rule.
+`reference` must be generated before insert because there is no numeric
+auto-increment case ID. A short random or ULID-derived value such as
+`pol-01J2M8R4K9` avoids adding another sequence table. The unique constraint is
+the collision backstop.
 
-An entry is copied into a new config version when it remains applicable. Historical
-versions and their restriction entries are never deleted while a case references
-them.
+#### `rule_results` JSON shape
 
-### 5.4 `policy_sampling_counter`
+```json
+{
+  "existingProduct": {
+    "passed": true,
+    "registryChecked": true,
+    "reasonCodes": []
+  },
+  "taxResidency": {
+    "passed": true,
+    "matchedList": "SUPPORTED",
+    "reasonCodes": []
+  },
+  "restrictionList": {
+    "passed": true,
+    "reasonCodes": []
+  },
+  "sampling": {
+    "sampled": false,
+    "position": 20,
+    "reasonCodes": []
+  }
+}
+```
 
-Operational state used to allocate an exact, concurrency-safe sequence within each
-configuration version.
+Rules for this document:
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `config_version` | `INT` | no | PK and FK to `policy_config.version` |
-| `last_ordinal` | `BIGINT` | no | Last allocated sequence number, initially `0` |
-| `lock_version` | `BIGINT` | no | JPA optimistic-lock version |
+- all four locked sections are written together with the machine outcome;
+- reason codes are arrays because one case may contribute several reasons;
+- no applicant name, DOB, country list, registry payload, or other raw
+  application value is stored;
+- the sampling position must equal the relational `sampling_position`;
+- manual decisions and overrides do not rewrite the machine rule results.
 
-When processing a new application, the service locks the counter row, increments
-`last_ordinal`, and stores the resulting value in `policy_case.sampling_ordinal`
-in the same transaction. A case is sampled when:
+MySQL 8.4 `JSON_TABLE` can unnest every `reasonCodes` array for UC05. That query
+must have a real-MySQL integration test because H2 compatibility mode does not
+prove MySQL JSON query behaviour.
+
+### 6.2 `policy_config`
+
+One row is one complete policy document. The table is insert-only:
+`MAX(version)` is current, and old rows remain available to explain old cases.
+
+| Column | MySQL type | Null | Source | Constraint / meaning |
+|---|---|---:|---|---|
+| `version` | `INT` | no | Customer Policy service; version 1 is seeded by Liquibase | Primary key; next version is `MAX(version) + 1` |
+| `supported_residencies` | `JSON` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | JSON array of uppercase ISO alpha-2 country codes |
+| `excluded_residencies` | `JSON` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | JSON array of uppercase ISO alpha-2 country codes |
+| `restriction_list` | `JSON` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | Array of `{fullName, dateOfBirth, reason}` objects |
+| `sample_every` | `INT` | no | Liquibase seed for version 1; compliance officer `POST /config` for later versions | Every Xth first-time decision is referred; must be at least 1 |
+| `effective_from` | `TIMESTAMP(6)` | no | Service/database clock when the immutable config version is inserted | Time this version became current |
+
+Example:
+
+```json
+{
+  "version": 1,
+  "supportedResidencies": ["GB", "IE", "PL", "DE", "FR", "ES", "NL"],
+  "excludedResidencies": ["US"],
+  "restrictionList": [
+    {
+      "fullName": "Victor Sable",
+      "dateOfBirth": "1978-03-02",
+      "reason": "prior fraud loss"
+    },
+    {
+      "fullName": "Dana Kovacs",
+      "dateOfBirth": "1984-11-19",
+      "reason": "account abuse"
+    }
+  ],
+  "sampleEvery": 7
+}
+```
+
+Validation before insert:
+
+- both residency values are JSON arrays;
+- every country is uppercase ISO alpha-2;
+- no country appears in both lists;
+- every restriction entry has non-blank `fullName`, ISO date
+  `dateOfBirth`, and non-blank `reason`;
+- duplicate restriction entries are rejected using normalized name + DOB;
+- `sample_every >= 1`;
+- the submitted document is complete; missing lists are not inherited
+  implicitly.
+
+JSON is appropriate here because UC07 writes and UC08 reads the whole version as
+one document. The brief does not require independent CRUD, joins, or reports over
+individual residency or restriction rows. Versioning the complete document also
+prevents a case from observing a mixture of old and new lists.
+
+Publishing a version runs in one transaction, locks the current maximum version,
+and inserts `MAX(version) + 1`. Existing versions are never updated or deleted.
+
+### 6.3 `override_log`
+
+Append-only audit trail for UC06. Queue decisions update the decision fields on
+`policy_record`; this table is specifically for a later manual override.
+
+| Column | MySQL type | Null | Source | Constraint / meaning |
+|---|---|---:|---|---|
+| `id` | `BIGINT` | no | MySQL auto-increment | Primary key |
+| `application_id` | `VARCHAR(64)` | no | Override URL path and referenced `policy_record` | FK to `policy_record.application_id` |
+| `old_outcome` | `VARCHAR(16)` | no | Current `policy_record.outcome`, read inside the override transaction | Outcome before the override |
+| `new_outcome` | `VARCHAR(16)` | no | Operator's override request | `APPROVED`, `REJECTED`, or `REFERRED` |
+| `reason` | `VARCHAR(1000)` | no | Operator's override request | Mandatory operator justification |
+| `operator` | `VARCHAR(255)` | no | Upstream override request field | Required operator value, aligned exactly with the upstream contract |
+| `overridden_at` | `TIMESTAMP(6)` | no | Service/database clock when the override succeeds | Override time |
+
+Constraints and indexes:
+
+- FK to `policy_record`, delete restricted;
+- index `(application_id, overridden_at)`;
+- index `(operator, overridden_at)`.
+
+An override transaction updates `policy_record.outcome`, decision metadata, and
+inserts one `override_log` row. It never changes `machine_outcome`,
+`policy_config_version`, `sampling_position`, or `rule_results`.
+
+## 7. Sampling Without a Fourth Table
+
+The brief requires every Xth first-time policy decision to be referred and exposes
+the position in `ruleResults.sampling.position`.
+
+The worker allocates `sampling_position` in a short transaction:
+
+1. lock the current `policy_config` row with `SELECT ... FOR UPDATE`;
+2. read `MAX(policy_record.sampling_position) + 1`;
+3. set the case's config version and sampling position;
+4. commit immediately;
+5. perform registry and rule calls outside the lock.
+
+The unique constraint on `sampling_position` is the final concurrency guard. This
+keeps exact sampling inside `policy_record` rather than introducing a separate
+counter entity. Allocation must be tested with concurrent workers on MySQL 8.4.
+
+A case is sampled when:
 
 ```text
-sampling_ordinal % sample_every == 0
+sampling_position % sample_every == 0
 ```
 
-This is more reliable than using an auto-increment case ID: MySQL may leave gaps
-after rolled-back inserts, which can accidentally skip a required sample.
+Sampling applies only once per new `application_id`; repeated `/execute` calls
+never allocate another position.
 
-### 5.5 `policy_case`
+## 8. State Transitions, Intake, Idempotency, and Callback Flow
 
-The durable local record for one application. It contains decision and workflow
-metadata only, never the application payload.
+The brief uses the word "status" at several layers. They are related, but they
+are not interchangeable:
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `id` | `BIGINT` | no | Auto-increment primary key |
-| `application_id` | `VARCHAR(64)` | no | Unique ID from the request envelope |
-| `reference` | `VARCHAR(32)` | no | Unique operator-facing reference |
-| `config_version` | `INT` | yes | FK to the policy version used; null until the worker starts |
-| `sampling_ordinal` | `BIGINT` | yes | Sequence allocated off-thread for sampling |
-| `workflow_status` | `VARCHAR(32)` | no | Local processing state |
-| `machine_outcome` | `VARCHAR(16)` | yes | Original engine result |
-| `outcome` | `VARCHAR(16)` | yes | Current brief-compatible business outcome |
-| `current_reason_code` | `VARCHAR(64)` | yes | Primary reason for the current outcome |
-| `callback_status` | `VARCHAR(32)` | yes | Brief callback status for the current outcome |
-| `callback_state` | `VARCHAR(16)` | no | Callback delivery state |
-| `callback_attempts` | `INT` | no | Starts at `0` |
-| `last_callback_at` | `TIMESTAMP(6)` | yes | Most recent callback attempt |
-| `next_callback_at` | `TIMESTAMP(6)` | yes | Retry scheduling time |
-| `claimed_by` | `VARCHAR(100)` | yes | Current manual reviewer |
-| `claimed_at` | `TIMESTAMP(6)` | yes | Time the reviewer claimed the case |
-| `received_at` | `TIMESTAMP(6)` | no | Time this service accepted the request |
-| `decided_at` | `TIMESTAMP(6)` | yes | Time of the current decision |
-| `updated_at` | `TIMESTAMP(6)` | no | Last state change |
-| `lock_version` | `BIGINT` | no | JPA optimistic-lock version |
+| Layer | Allowed values | Persistence and meaning |
+|---|---|---|
+| `202` acknowledgement | `in-progress` | Response-only contract value; confirms that the row was committed |
+| `policy_record.processing_status` | `IN_PROGRESS`, `DECIDED` | Local worker lifecycle; `DECIDED` means the machine has finished, not that the journey cannot be changed by a human |
+| `policy_record.outcome` | null, `APPROVED`, `REJECTED`, `REFERRED` | Current effective business decision; null only while `IN_PROGRESS` |
+| Referral queue projection | unclaimed, claimed | Derived from `outcome = REFERRED` and `claimed_by`; not another persisted status enum |
+| Callback `status` | `completed`, `rejected`, `application-manual`, `local-manual` | Orchestrator journey instruction derived from the transition that produced the effective outcome |
 
-Allowed values:
+### 8.1 Complete Case State Transition
 
-- `workflow_status`: `IN_PROGRESS`, `AWAITING_REVIEW`, `COMPLETED`;
-- outcomes: `APPROVED`, `REJECTED`, `REFERRED`;
-- `callback_status`: `completed`, `rejected`, `application-manual`,
-  `local-manual`;
-- `callback_state`: `PENDING`, `SENT`, `FAILED`.
+```mermaid
+stateDiagram-v2
+    direction LR
 
-Constraints and indexes:
+    state "IN_PROGRESS<br/>outcome = null" as IN_PROGRESS
+    state "DECIDED / APPROVED" as APPROVED
+    state "DECIDED / REJECTED" as REJECTED
+    state "DECIDED / REFERRED<br/>unclaimed" as REFERRED_OPEN
+    state "DECIDED / REFERRED<br/>claimed" as REFERRED_CLAIMED
 
-- unique `application_id`;
-- unique `reference`;
-- unique `(config_version, sampling_ordinal)`;
-- index `(workflow_status, received_at)` for the referral queue;
-- index `(outcome, decided_at)` for outcome search;
-- index `(callback_state, next_callback_at)` for callback retry;
-- index `config_version` for policy-history joins;
-- FK to `policy_config` with delete restricted.
+    [*] --> IN_PROGRESS : new /execute<br/>insert before 202 in-progress
 
-`reference` should be stable and generated after insert, for example
-`POL-00001234`. It is for staff search and display; integrations continue to use
-`application_id`.
+    IN_PROGRESS --> APPROVED : all rules pass<br/>callback completed
+    IN_PROGRESS --> REJECTED : any rejection<br/>callback rejected
+    IN_PROGRESS --> REFERRED_OPEN : sampling wins<br/>callback application-manual
+    IN_PROGRESS --> REFERRED_OPEN : registry unavailable after 3 tries<br/>callback application-manual
 
-### 5.6 `policy_rule_result`
+    REFERRED_OPEN --> REFERRED_CLAIMED : claim<br/>set claimed_by / claimed_at
+    REFERRED_CLAIMED --> REFERRED_OPEN : release<br/>clear claim fields
+    REFERRED_CLAIMED --> APPROVED : queue approves + reason<br/>callback local-manual
+    REFERRED_CLAIMED --> REJECTED : queue rejects + reason<br/>callback local-manual
 
-One row records one rule evaluation for one case.
+    APPROVED --> REJECTED : override + reason<br/>audit + callback local-manual
+    REJECTED --> APPROVED : override + reason<br/>audit + callback local-manual
+    APPROVED --> REFERRED_OPEN : override to REFERRED<br/>audit + callback local-manual
+    REJECTED --> REFERRED_OPEN : override to REFERRED<br/>audit + callback local-manual
+```
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `id` | `BIGINT` | no | Auto-increment primary key |
-| `policy_case_id` | `BIGINT` | no | FK to `policy_case.id` |
-| `rule_code` | `VARCHAR(64)` | no | Stable technical rule ID |
-| `outcome` | `VARCHAR(16)` | no | `PASSED`, `FAILED`, `REFERRED`, `SKIPPED`, or `ERROR` |
-| `reason_code` | `VARCHAR(64)` | yes | Stable business reason code |
-| `restriction_entry_id` | `BIGINT` | yes | FK when a restriction entry matched |
-| `evaluated_at` | `TIMESTAMP(6)` | no | Evaluation time |
+This diagram deliberately shows claimed/unclaimed as two views of the same
+persisted `DECIDED + REFERRED` state. Claim and release do not change
+`processing_status` or `outcome`. Every human outcome change preserves
+`machine_outcome`, `rule_results`, `policy_config_version`, and
+`sampling_position`.
 
-Constraints and indexes:
+The three business entrances to `REFERRED` are therefore:
 
-- unique `(policy_case_id, rule_code)`;
-- index `(reason_code, evaluated_at)` for rejection-pattern reporting;
-- index `(outcome, evaluated_at)`;
-- FKs with delete restricted.
+1. deterministic sampling;
+2. registry unavailable after three attempts;
+3. a human override of an `APPROVED` or `REJECTED` case.
 
-Initial `rule_code` values:
+The first two emit `application-manual`; the third emits `local-manual` because
+the transition was made by an operator.
 
-- `EXISTING_PRODUCT`;
-- `TAX_RESIDENCY`;
-- `RESTRICTION_LIST`;
-- `MANUAL_SAMPLE`.
+### 8.2 Transition Processing
 
-Initial business `reason_code` values:
+| Event | Required current state | Atomic local processing | Callback / result |
+|---|---|---|---|
+| New `/execute` | No row | Insert `IN_PROGRESS`, null outcome, generated reference and timestamps | Return `202 in-progress`; start worker only after commit |
+| Machine approval | `IN_PROGRESS` | Pin config and sampling position; store rule results; set machine/effective outcome `APPROVED` and status `DECIDED` | `completed` |
+| Machine rejection | `IN_PROGRESS` | Store every rejection reason; set machine/effective outcome `REJECTED` and status `DECIDED` | `rejected` |
+| Sampled referral | `IN_PROGRESS`, machine rules completed | Preserve the pre-sampling `machine_outcome`; set effective outcome `REFERRED` and status `DECIDED` | `application-manual` |
+| Registry-unavailable referral | `IN_PROGRESS`, registry failed after three attempts | Store `POL_REGISTRY_UNAVAILABLE` and all other rule results; set effective outcome `REFERRED` and status `DECIDED` | `application-manual` |
+| Claim | Open `REFERRED`, unclaimed | Set `claimed_by`, `claimed_at`, increment `lock_version` | No callback |
+| Release | `REFERRED`, claimed by the same operator | Clear claim fields, increment `lock_version` | No callback |
+| Queue decision | `REFERRED`, claimed by the deciding operator | Set outcome to `APPROVED` or `REJECTED`; write operator, reason and decision time; keep machine fields | `local-manual` with `POL_MANUAL_APPROVED` or `POL_MANUAL_DECLINED` |
+| Override | Existing `APPROVED` or `REJECTED`; target is a different allowed outcome | Update effective outcome and decision metadata; append exactly one `override_log`; clear claim fields when target is `REFERRED` | `local-manual` |
 
-- `POL_ALL_CHECKS_PASSED`;
-- `POL_EXISTING_PRODUCT_HELD`;
-- `POL_TAX_RESIDENCY_UNSUPPORTED`;
-- `POL_TAX_RESIDENCY_EXCLUDED`;
-- `POL_CUSTOMER_BLOCKED`;
-- `POL_SAMPLED_FOR_REVIEW`;
-- `POL_REGISTRY_UNAVAILABLE`;
-- `POL_MANUAL_APPROVED`;
-- `POL_MANUAL_DECLINED`.
+### 8.3 Duplicate, Invalid, and Failure Handling
 
-The reporting query for rejection patterns operates on this table, rather than
-parsing JSON from `policy_case`.
+- Duplicate `/execute` while `IN_PROGRESS`: return the same `202`; do not insert,
+  allocate another sampling position, or start a second worker.
+- Duplicate `/execute` after `DECIDED`: do not re-run rules or the registry;
+  replay the stored outcome using the callback status implied by its decision
+  source.
+- Repeated claim by the same operator is a successful no-op; claim by another
+  operator returns `409`. Repeated release of an already unclaimed case is a
+  successful no-op; release by another operator returns `409`.
+- A repeated queue decision or override that exactly matches the stored human
+  outcome, operator, and reason returns the current representation without a
+  second callback or audit row. A different stale command returns `409`.
+- Missing required fields return `400`; unknown `application_id` returns `404`;
+  failed optimistic-lock guards return `409`. None of these mutate data or send
+  a callback.
+- Callback transport failure does not roll back a committed decision. The stored
+  state is replayable; autonomous durable retry attempts would require an outbox
+  or equivalent fourth table.
+- An unexpected worker failure leaves the row `IN_PROGRESS`; no `FAILED` business
+  status exists in the brief, so recovery must resume the existing row rather
+  than inventing a new outcome.
+- Applicant-proxy failure does not change the case state; the case still renders
+  and only the live applicant panel degrades.
 
-### 5.7 `policy_action_log`
+There is one contract question that the implementation must not guess: UC06
+allows `newOutcome = REFERRED`, but its callback acceptance criterion names only
+`POL_MANUAL_APPROVED` and `POL_MANUAL_DECLINED`. The instructor must confirm
+whether override-to-`REFERRED` is intended and, if so, which locked reason code
+it uses. Do not invent `POL_MANUAL_REFERRED`.
 
-Append-only audit log for operator activity.
+### 8.4 Intake Algorithm
 
-| Column | MySQL type | Null | Constraint / meaning |
-|---|---|---:|---|
-| `id` | `BIGINT` | no | Auto-increment primary key |
-| `policy_case_id` | `BIGINT` | no | FK to `policy_case.id` |
-| `action_type` | `VARCHAR(32)` | no | Operator action |
-| `old_outcome` | `VARCHAR(16)` | yes | Outcome before the action |
-| `new_outcome` | `VARCHAR(16)` | yes | Outcome after the action |
-| `previous_reason_code` | `VARCHAR(64)` | yes | Primary reason before the action |
-| `new_reason_code` | `VARCHAR(64)` | yes | Primary reason after the action |
-| `rationale` | `VARCHAR(1000)` | yes | Required for decision or override |
-| `actor_id` | `VARCHAR(100)` | no | Authenticated staff identity |
-| `created_at` | `TIMESTAMP(6)` | no | Defaults to `CURRENT_TIMESTAMP(6)` |
+Before returning `202`:
 
-Initial `action_type` values:
+1. validate `applicationId` and `command = check-policy`;
+2. insert one `policy_record` with `processing_status = IN_PROGRESS`;
+3. on duplicate `application_id`, load the existing row instead;
+4. commit;
+5. return the locked acknowledgement body;
+6. trigger processing only after commit.
 
-- `CLAIM`;
-- `RELEASE`;
-- `MANUAL_DECISION`;
-- `OVERRIDE`.
+The request thread never calls a provider or evaluates a policy rule. The
+committed row is the durable hand-off. Recovery scans stranded `IN_PROGRESS` rows
+and fetches the application live from the orchestrator; the payload remains
+unstored.
 
-Indexes:
+The decision worker stores config version, position, rule results, outcomes, and
+`processing_status = DECIDED` in one transaction, then sends the callback.
 
-- `(policy_case_id, created_at)`;
-- `(actor_id, created_at)`;
-- `(action_type, created_at)`.
+For repeated `/execute`:
 
-Rows are never updated or deleted through the application. Current queue state
-lives on `policy_case`; this table explains how that state was reached.
+- an `IN_PROGRESS` case is acknowledged but not started a second time;
+- a decided case does not re-run rules or call the registry;
+- its stored outcome is replayed with the callback status derived from outcome
+  and human-decision metadata.
 
-## 6. Decision Precedence
+## 9. Manual Queue and Override Concurrency
 
-Rules should be evaluated and reported consistently:
+Claim uses an optimistic update:
 
-1. Existing product found: `REJECTED`.
-2. Explicitly excluded tax residency: `REJECTED`.
-3. Unsupported tax residency: `REJECTED`.
-4. Restriction-list match: `REJECTED`.
-5. Registry unavailable or another indeterminate dependency result: `REFERRED`.
-6. Sampling rule selected the case: `REFERRED`.
-7. Otherwise: `APPROVED`.
+```text
+UPDATE policy_record
+SET claimed_by = ?, claimed_at = ?, lock_version = lock_version + 1
+WHERE application_id = ?
+  AND outcome = 'REFERRED'
+  AND claimed_by IS NULL
+  AND lock_version = ?
+```
 
-All applicable rule results may be recorded even when an earlier hard rejection
-already determines the decision. If a rule cannot safely run because required data
-is absent, record `ERROR` or `SKIPPED` with the appropriate reason code; do not
-persist the malformed value.
+Zero updated rows returns HTTP `409`. Release requires the same operator.
 
-The callback payload is generated from `outcome`, `callback_status`,
-`current_reason_code`, and the structured rule results. It follows the brief's
-locked callback shape and is not stored as duplicate free text, which could
-accidentally retain applicant information.
+A queue decision requires `APPROVED` or `REJECTED`, `operator`, and a non-blank
+reason. It updates `outcome`, `decided_by`, `decided_at`, and `decision_reason`
+without changing machine fields, then emits a `local-manual` callback.
 
-## 7. Transaction and Concurrency Boundaries
+An override uses the same optimistic-lock discipline and additionally appends an
+`override_log` row. It may change `APPROVED` to `REJECTED` or `REFERRED`, or
+`REJECTED` to `APPROVED` or `REFERRED`. A referred case is worked through the
+claimed queue path. An exact repeated override is a no-op; it does not create a
+second audit row or callback.
 
-The `/execute` intake path must complete before the HTTP `202` is returned:
+## 10. Data Ownership and Privacy
 
-1. validate `applicationId` and `command`;
-2. insert exactly one `policy_case`, keyed by `application_id`, with
-   `workflow_status = IN_PROGRESS`;
-3. if the application already exists, load it without creating or re-processing
-   a second case;
-4. commit the case;
-5. return `202` with `status`, `applicationId`, and `command`;
-6. start off-thread decision processing only after the commit.
+Stored:
 
-The request thread does not call the registry or run policy rules. The application
-object is handed to the in-memory worker and is never persisted.
+- `application_id`;
+- case timing and workflow metadata;
+- derived outcomes and rule reason codes;
+- versioned bank-owned policy configuration;
+- operator claim, decision, and override audit metadata.
 
-The committed `IN_PROGRESS` row is the durable hand-off. A recovery worker must
-resume stranded rows after a restart by fetching the application live from the
-orchestrator using `application_id`; recovery must not depend on another
-`/execute` delivery.
-
-The worker then:
-
-1. resolves the current config version and allocates the sampling ordinal;
-2. performs the live registry lookup and evaluates the policy rules;
-3. commits rule results, `machine_outcome`, `outcome`, `callback_status`, and
-   workflow state;
-4. sends `POST /api/v1/callbacks` after the decision commit.
-
-A repeated `/execute` does not re-run rules or call the registry again. If the
-case is already decided, the stored outcome and callback status are replayed.
-
-The callback is deliberately outside the decision transaction. A network failure
-must not roll back the policy outcome. On failure, update `callback_state`,
-`callback_attempts`, and `next_callback_at` in a short follow-up transaction.
-
-Manual claim, manual decision, and override operations must use `lock_version`.
-Concurrent updates should return a conflict instead of silently replacing another
-operator's work.
-
-## 8. Data Ownership and Privacy
-
-Persisted:
-
-- envelope `application_id`;
-- policy configuration owned by this service;
-- derived decisions and reason codes;
-- callback delivery metadata;
-- staff audit metadata.
-
-Not persisted:
+Not stored:
 
 - inbound request JSON;
-- applicant name or date of birth from the application;
-- address, email, phone, nationality, or tax-residency array;
+- applicant name, DOB, address, email, phone, nationality, or tax-residency
+  array from the application;
 - customer-registry response payload;
 - a local customer profile.
 
-The restriction list is an exception only in the sense that it contains people:
-it is bank-owned policy input, not a copied application. Access to it and to
-operator audit data should be restricted to authorised staff.
+The restriction list contains bank-owned policy data, not copied applicant data.
+Its access must still be limited to authorised staff. Free-text decision and
+override reasons must instruct operators not to enter applicant PII.
 
-## 9. Seed Version 1
+## 11. Liquibase Plan
 
-The initial published policy version should contain:
+Never edit the applied `001-create-demo-showcase.yaml`.
 
-- supported residencies: `GB`, `IE`, `PL`, `DE`, `FR`, `ES`, `NL`;
-- excluded residency: `US`;
-- `sample_every = 7`;
-- `Victor Sable`, date of birth `1978-03-02`, reason `prior fraud loss`;
-- `Dana Kovacs`, date of birth `1984-11-19`, reason `account abuse`.
-
-Seed data must be inserted by Liquibase with explicit values. Application startup
-must not silently recreate or modify policy versions.
-
-## 10. Liquibase Implementation Sequence
-
-The existing `001-create-demo-showcase.yaml` has already been applied in some
-environments and must not be edited.
-
-Recommended new changesets:
+Recommended append-only changesets:
 
 1. `002-create-policy-config.yaml`
-2. `003-create-policy-config-rules.yaml`
-3. `004-create-policy-case.yaml`
-4. `005-create-policy-rule-result.yaml`
-5. `006-create-policy-action-log.yaml`
-6. `007-seed-policy-config-v1.yaml`
-7. `008-drop-demo-showcase.yaml`
+2. `003-create-policy-record.yaml`
+3. `004-create-override-log.yaml`
+4. `005-seed-policy-config-v1.yaml`
+5. `006-drop-demo-showcase.yaml`
 
-Changeset `008` should be added only after Java code, repositories, endpoints, and
-tests no longer reference `DemoShowcase`.
+Add `006` only after no Java code, repository, endpoint, or test references
+`DemoShowcase`.
 
-Each changeset should include indexes, foreign keys, and rollback where rollback is
-safe. Production repair must not be treated as a normal migration mechanism.
+## 12. Validation
 
-## 11. Validation Strategy
+Docker-free tests with H2:
 
-The implementation should be verified at two levels:
+- duplicate `/execute` creates one row;
+- the row commits before `202`;
+- config and rule validation;
+- decision precedence and reason-code shape;
+- claim/release conflict handling;
+- manual decision and override audit behaviour.
 
-- `./mvnw test`: H2 in MySQL compatibility mode, covering entity validation,
-  idempotency, rule precedence, config version selection, and manual workflow;
-- `./mvnw verify -DskipITs=false`: Testcontainers MySQL 8.4, covering Liquibase,
-  indexes, foreign keys, timestamp precision, locking, and real query behaviour.
+MySQL 8.4 Testcontainers integration tests:
 
-Queries used by the referral queue, rejection-pattern report, and callback retry
-worker should be tested with representative row counts and inspected with
-`EXPLAIN` on MySQL before production rollout.
+- Liquibase and `ddl-auto=validate`;
+- JSON persistence and `JSON_TABLE` reason aggregation;
+- config version allocation under concurrency;
+- sampling-position allocation under concurrency;
+- foreign keys, unique constraints, and timestamp precision.
 
-## 12. Deferred Decisions
-
-The following are intentionally outside the first schema:
-
-- full callback-attempt history: add a separate append-only table only if operators
-  need every HTTP attempt, response code, and failure category;
-- arbitrary JSON rule evidence: add only when a real rule needs data that cannot be
-  represented by stable columns, and prohibit application PII;
-- customer snapshots: prohibited by the current brief; details remain owned by the
-  orchestrator;
-- candidate rules such as tenure or partner consent: add new stable rule/reason
-  codes and config tables only after those use cases are selected.
-
-This keeps the first implementation small enough to deliver while preserving
-idempotency, explainability, auditability, and future policy-version history.
+This model intentionally accepts more complex JSON queries in exchange for a
+smaller domain model that directly follows the brief. A fourth operational table,
+such as a callback outbox, should be added only if durable callback-attempt
+tracking becomes an agreed requirement.
