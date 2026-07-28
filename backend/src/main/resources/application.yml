@@ -74,7 +74,7 @@ service:
   # Comma-separated external systems this module fakes — the "what has been mocked" register,
   # served live on /info so it cannot go stale the way a paragraph in a document does. Empty
   # means you are claiming nothing is mocked.
-  mocked-dependencies: ${MOCKED_DEPENDENCIES:}
+  mocked-dependencies: ${MOCKED_DEPENDENCIES:customer-registry}
 
 cors:
   allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}

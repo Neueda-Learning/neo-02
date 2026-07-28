@@ -1,5 +1,8 @@
 package com.neobank.module.config;
 
+import com.neobank.module.integrations.registry.InMemoryRegistryClient;
+import com.neobank.module.integrations.registry.RegistryClient;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -17,5 +20,11 @@ public class AppConfig {
     @Bean
     public RestClient restClient(RestClient.Builder builder) {
         return builder.build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(RegistryClient.class)
+    public RegistryClient registryClient() {
+        return new InMemoryRegistryClient();
     }
 }

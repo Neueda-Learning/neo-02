@@ -3,6 +3,11 @@ package com.neobank.module.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neobank.module.model.PolicyRecord;
+import com.neobank.module.model.DecisionResult;
+import com.neobank.module.model.PolicyOutcome;
+import com.neobank.module.model.RuleResult;
+import jakarta.persistence.EntityManager;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +38,9 @@ class PolicyRecordRepositoryIT {
     @Autowired
     PolicyRecordRepository records;
 
+    @Autowired
+    EntityManager entityManager;
+
     @Test
     void anInProgressRowRoundTripsThroughRealMysql() {
         PolicyRecord saved = records.saveAndFlush(new PolicyRecord("APP-1", "pol-0000000001"));
@@ -40,5 +48,27 @@ class PolicyRecordRepositoryIT {
         PolicyRecord reloaded = records.findById(saved.getApplicationId()).orElseThrow();
         assertThat(reloaded.getProcessingStatus()).isEqualTo("IN_PROGRESS");
         assertThat(reloaded.getSubmittedAt()).isNotNull();
+    }
+
+    @Test
+    void aCompleteDecisionAndItsRuleJsonRoundTripThroughRealMysql() {
+        PolicyRecord record = new PolicyRecord("APP-DECIDED", "pol-0000000002");
+        record.completeDecision(new DecisionResult(
+                PolicyOutcome.APPROVED,
+                PolicyOutcome.APPROVED,
+                List.of(
+                        RuleResult.existingProduct(true, true, List.of()),
+                        RuleResult.taxResidency(true, "SUPPORTED", List.of()),
+                        RuleResult.restrictionList(true, List.of()),
+                        RuleResult.sampling(false, 1, List.of("POL_ALL_CHECKS_PASSED")))));
+        records.saveAndFlush(record);
+        entityManager.clear();
+
+        PolicyRecord reloaded = records.findById("APP-DECIDED").orElseThrow();
+        assertThat(reloaded.getOutcome()).isEqualTo(PolicyOutcome.APPROVED);
+        assertThat(reloaded.getMachineOutcome()).isEqualTo(PolicyOutcome.APPROVED);
+        assertThat(reloaded.getRuleResults()).hasSize(4);
+        assertThat(reloaded.getRuleResults().get(3).reasonCodes())
+                .containsExactly("POL_ALL_CHECKS_PASSED");
     }
 }

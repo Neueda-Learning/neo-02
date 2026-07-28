@@ -24,7 +24,7 @@ const FILTERS = ['All', ...STATUSES];
  * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
  * DataTable — no screen re-implements them.
  */
-export default function RequestsScreen({ requests, error, info }) {
+export default function RequestsScreen({ requests, error, info, onOpenCase }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
 
@@ -100,6 +100,7 @@ export default function RequestsScreen({ requests, error, info }) {
         rows={matches}
         total={matches.length}
         rowKey={(r) => r.applicationId}
+        onRowClick={onOpenCase}
         footnote="newest first"
         empty={
           <EmptyState

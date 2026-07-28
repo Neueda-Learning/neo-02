@@ -19,3 +19,18 @@
   gap: var(--ds-space-3);
   padding: 0 var(--ds-space-2);
 }
+
+.decision-loading {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+}
+
+.decision-reasons {
+  min-height: var(--ds-control-height-sm);
+}
+
+.decision-no-reason {
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-sm);
+}

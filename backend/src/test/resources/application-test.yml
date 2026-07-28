@@ -22,4 +22,4 @@ service:
   team: Team 02
   domain: policy
   orchestrator-url: http://localhost:9
-  mocked-dependencies: id-verification-provider, sanctions-list
+  mocked-dependencies: customer-registry
