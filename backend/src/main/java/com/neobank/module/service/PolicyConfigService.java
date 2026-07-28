@@ -19,7 +19,7 @@ public class PolicyConfigService {
         this.writer = writer;
     }
 
-    /** Validates the full document, then publishes it as a brand-new version. Never updates. */
+    /** Validates the full document, then publishes it unless it is identical to the current one. */
     public int createVersion(PolicyConfigRequest request) {
         validator.validate(request);
         List<PolicyConfig.RestrictionEntry> restrictions = request.restrictionList().stream()

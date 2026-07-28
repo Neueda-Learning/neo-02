@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.neobank.module.dto.PolicyConfigRequest;
 import com.neobank.module.service.PolicyConfigService;
 import com.neobank.module.service.PolicyConfigValidationException;
+import com.neobank.module.service.PolicyConfigValidationException.Violation;
 
 /** UC07 · Edit Policy Config — the {@code POST /config} contract. */
 @WebMvcTest(PolicyConfigController.class)
@@ -65,7 +66,9 @@ class PolicyConfigControllerTest {
                                   "sampleEvery": 0
                                 }
                                 """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("sampleEvery"))
+                .andExpect(jsonPath("$.errors[0].message").isNotEmpty());
 
         verifyNoInteractions(configs);
     }
@@ -74,8 +77,8 @@ class PolicyConfigControllerTest {
     void businessRuleViolationsFromTheServiceComeBackAs400() throws Exception {
         when(configs.createVersion(any(PolicyConfigRequest.class)))
                 .thenThrow(new PolicyConfigValidationException(
-                        List.of("residencies [GB] cannot appear on both supportedResidencies and "
-                                + "excludedResidencies")));
+                        List.of(new Violation("excludedResidencies",
+                                "residencies [GB] cannot also appear on supportedResidencies"))));
 
         mvc.perform(post("/config")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -88,7 +91,10 @@ class PolicyConfigControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("excludedResidencies"))
+                .andExpect(jsonPath("$.errors[0].message").value(
+                        org.hamcrest.Matchers.containsString("cannot also appear")))
                 .andExpect(jsonPath("$.message").value(
-                        org.hamcrest.Matchers.containsString("cannot appear on both")));
+                        org.hamcrest.Matchers.containsString("cannot also appear")));
     }
 }
