@@ -16,10 +16,9 @@ import com.neobank.module.service.PolicyConfigService;
 import jakarta.validation.Valid;
 
 /**
- * UC07 · Edit Policy Config — a compliance officer publishes a brand-new, insert-only
- * {@code policy_config} version. Nothing here is ever updated or deleted; {@code MAX(version)}
- * becomes current for the very next {@code /execute}, while earlier cases keep the version
- * that decided them.
+ * UC07 · Edit Policy Config — a compliance officer publishes an insert-only
+ * {@code policy_config} version. An exact replay returns the current version without another
+ * insert. Nothing is ever updated or deleted, so earlier cases keep the version that decided them.
  */
 @RestController
 @RequestMapping("/config")

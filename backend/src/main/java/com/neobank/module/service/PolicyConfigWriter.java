@@ -2,7 +2,6 @@ package com.neobank.module.service;
 
 import java.util.List;
 
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,26 +15,42 @@ import com.neobank.module.repository.PolicyConfigRepository;
 @Service
 public class PolicyConfigWriter {
 
-    private final JdbcTemplate jdbc;
     private final PolicyConfigRepository configs;
 
-    public PolicyConfigWriter(JdbcTemplate jdbc, PolicyConfigRepository configs) {
-        this.jdbc = jdbc;
+    public PolicyConfigWriter(PolicyConfigRepository configs) {
         this.configs = configs;
     }
 
     /**
-     * Locks the current maximum version, then inserts {@code version = MAX + 1} with the whole
-     * document — both residency lists, the restriction list and sampleEvery together.
+     * Serializes publishers by locking the immutable seeded row. If the current document is
+     * identical, returns it unchanged; otherwise inserts {@code current version + 1}.
      */
     @Transactional
     public PolicyConfig publish(List<String> supportedResidencies, List<String> excludedResidencies,
                                 List<PolicyConfig.RestrictionEntry> restrictionList, int sampleEvery) {
-        Integer maxVersion = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(version), 0) FROM policy_config FOR UPDATE", Integer.class);
-        int nextVersion = (maxVersion == null ? 0 : maxVersion) + 1;
+        configs.lockVersionAllocator()
+                .orElseThrow(() -> new IllegalStateException("seeded policy config version 1 is missing"));
+
+        PolicyConfig current = configs.findFirstByOrderByVersionDesc()
+                .orElseThrow(() -> new IllegalStateException("no policy config is available"));
+        if (sameDocument(current, supportedResidencies, excludedResidencies,
+                restrictionList, sampleEvery)) {
+            return current;
+        }
+
+        int nextVersion = current.getVersion() + 1;
         PolicyConfig config = new PolicyConfig(nextVersion, supportedResidencies, excludedResidencies,
                 restrictionList, sampleEvery);
         return configs.saveAndFlush(config);
+    }
+
+    private boolean sameDocument(PolicyConfig current, List<String> supportedResidencies,
+                                 List<String> excludedResidencies,
+                                 List<PolicyConfig.RestrictionEntry> restrictionList,
+                                 int sampleEvery) {
+        return current.getSupportedResidencies().equals(supportedResidencies)
+                && current.getExcludedResidencies().equals(excludedResidencies)
+                && current.getRestrictionList().equals(restrictionList)
+                && current.getSampleEvery() == sampleEvery;
     }
 }

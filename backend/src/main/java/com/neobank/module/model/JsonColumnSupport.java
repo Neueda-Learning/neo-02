@@ -2,6 +2,7 @@ package com.neobank.module.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /** Shared Jackson plumbing for the JPA attribute converters that back {@code JSON} columns. */
@@ -22,7 +23,14 @@ final class JsonColumnSupport {
 
     static <T> T read(String json, TypeReference<T> type) {
         try {
-            return json == null ? null : MAPPER.readValue(json, type);
+            if (json == null) {
+                return null;
+            }
+            JsonNode value = MAPPER.readTree(json);
+            // H2's JSON column exposes a bound VARCHAR as a JSON string, while MySQL exposes the
+            // array/object itself. Accept both representations so the test profile covers reads.
+            String normalized = value.isTextual() ? value.textValue() : json;
+            return MAPPER.readValue(normalized, type);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to deserialize JSON column", e);
         }
