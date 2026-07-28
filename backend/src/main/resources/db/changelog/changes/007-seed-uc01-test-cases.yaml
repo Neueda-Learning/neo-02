@@ -1,0 +1,90 @@
+# UC-01 test data: two policy records for Maria Nowak and Sofia Garcia
+# These are used by the integration tests to verify search functionality
+# In production, these would be created by actual applications being processed
+databaseChangeLog:
+  - changeSet:
+      id: 007-seed-uc01-test-cases
+      author: neo-02
+      changes:
+        - insert:
+            tableName: policy_record
+            columns:
+              - column:
+                  name: application_id
+                  value: 'uc01-maria-001'
+              - column:
+                  name: processing_status
+                  value: 'DECIDED'
+              - column:
+                  name: outcome
+                  value: 'APPROVED'
+              - column:
+                  name: machine_outcome
+                  value: 'APPROVED'
+              - column:
+                  name: reference
+                  value: 'pol-maria-001'
+              - column:
+                  name: policy_config_version
+                  valueNumeric: 1
+              - column:
+                  name: sampling_position
+                  valueNumeric: 1
+              - column:
+                  name: rule_results
+                  value: '{"existingProduct":{"registered":false,"registryChecked":true},"taxResidency":{"matchedList":["GB"],"residency":"GB"},"restrictionList":{"notRestricted":true},"sampling":{"sampled":false,"position":1}}'
+              - column:
+                  name: submitted_at
+                  value: '2026-07-21 09:14:00'
+              - column:
+                  name: created_at
+                  value: '2026-07-21 09:14:00'
+              - column:
+                  name: updated_at
+                  value: '2026-07-21 09:14:00'
+              - column:
+                  name: lock_version
+                  valueNumeric: 0
+        - insert:
+            tableName: policy_record
+            columns:
+              - column:
+                  name: application_id
+                  value: 'uc01-sofia-001'
+              - column:
+                  name: processing_status
+                  value: 'DECIDED'
+              - column:
+                  name: outcome
+                  value: 'REJECTED'
+              - column:
+                  name: machine_outcome
+                  value: 'REJECTED'
+              - column:
+                  name: reference
+                  value: 'pol-sofia-001'
+              - column:
+                  name: policy_config_version
+                  valueNumeric: 1
+              - column:
+                  name: sampling_position
+                  valueNumeric: 2
+              - column:
+                  name: rule_results
+                  value: '{"existingProduct":{"registered":true,"registryChecked":true},"taxResidency":{"matchedList":[],"residency":"US"},"restrictionList":{"notRestricted":true},"sampling":{"sampled":false,"position":2}}'
+              - column:
+                  name: submitted_at
+                  value: '2026-07-22 10:30:00'
+              - column:
+                  name: created_at
+                  value: '2026-07-22 10:30:00'
+              - column:
+                  name: updated_at
+                  value: '2026-07-22 10:30:00'
+              - column:
+                  name: lock_version
+                  valueNumeric: 0
+      rollback:
+        - delete:
+            tableName: policy_record
+            where: application_id IN ('uc01-maria-001', 'uc01-sofia-001')

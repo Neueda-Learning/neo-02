@@ -36,4 +36,6 @@ export const api = {
   info: () => request('/info'),
   listApplications: () => request('/api/v1/applications'),
   getApplication: (id) => request(`/api/v1/applications/${id}`),
+  searchCases: (query, limit = 10) => request(`/api/v1/cases?q=${encodeURIComponent(query)}&limit=${limit}`),
+  getApplicant: (id) => request(`/api/v1/cases/${id}/applicant`),
 };

@@ -1,11 +1,15 @@
 package com.neobank.module.integrations.orchestrator;
 
-import com.neobank.module.model.Decision;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+import com.neobank.module.model.Decision;
 
 /**
  * The outbound half of the contract: telling the orchestrator what this module decided.
@@ -55,5 +59,35 @@ public class OrchestratorClient {
             log.warn("Status update to the orchestrator failed for {}: {} — its timeout sweeper "
                     + "will notice", applicationId, e.toString());
         }
+    }
+
+    /**
+     * Search for application IDs by applicant name via the orchestrator.
+     * UC-01 name search: GET /api/v1/applications?name={query} returns a list of application IDs
+     * that match the given name.
+     *
+     * @param name the applicant name to search for
+     * @return a list of matching application IDs, or empty list if none found or orchestrator
+     *         is unreachable
+     */
+    public List<String> searchApplicationIdsByName(String name) {
+        try {
+            SearchApplicationsResponse response = http.get()
+                    .uri(applicationsUrl + "?name={name}", name)
+                    .retrieve()
+                    .body(SearchApplicationsResponse.class);
+            return response != null ? response.applicationIds() : List.of();
+        } catch (RestClientException e) {
+            log.warn("Name search to the orchestrator failed for '{}': {} — returning empty list",
+                    name, e.toString());
+            return List.of();
+        }
+    }
+
+    /**
+     * DTO for the orchestrator's search response.
+     * Expected format: {"applicationIds": ["app-1", "app-2", ...]}
+     */
+    public record SearchApplicationsResponse(List<String> applicationIds) {
     }
 }

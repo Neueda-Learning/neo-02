@@ -1,6 +1,12 @@
 package com.neobank.module.service;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -8,18 +14,15 @@ import static org.mockito.Mockito.when;
 
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
+import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.PolicyRecord;
 import com.neobank.module.repository.PolicyRecordRepository;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executor;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 class ApplicationServiceTest {
 
     private PolicyRecordWriter writer;
     private PolicyRecordRepository records;
+    private OrchestratorClient orchestrator;
     private List<Runnable> scheduled;
     private ApplicationService service;
 
@@ -27,9 +30,10 @@ class ApplicationServiceTest {
     void setUp() {
         writer = mock(PolicyRecordWriter.class);
         records = mock(PolicyRecordRepository.class);
+        orchestrator = mock(OrchestratorClient.class);
         scheduled = new ArrayList<>();
         Executor executor = scheduled::add;
-        service = new ApplicationService(executor, writer, records);
+        service = new ApplicationService(executor, writer, records, orchestrator);
     }
 
     private static ApplicationRequest request(String id) {
@@ -67,7 +71,7 @@ class ApplicationServiceTest {
             throw new IllegalStateException("worker pool unavailable");
         };
         ApplicationService acceptingService =
-                new ApplicationService(rejectingExecutor, successfulWriter, records);
+                new ApplicationService(rejectingExecutor, successfulWriter, records, orchestrator);
 
         acceptingService.accept(request("SIM-04"));
 
@@ -83,8 +87,9 @@ class ApplicationServiceTest {
 
         assertThat(result).singleElement().satisfies(view -> {
             assertThat(view.applicationId()).isEqualTo("SIM-01");
-            assertThat(view.status()).isEqualTo("IN_PROGRESS");
-            assertThat(view.reference()).isEqualTo("pol-1234567890");
+            assertThat(view.outcome()).isNull(); // outcome is null initially
+            assertThat(view.sampled()).isFalse();
+            assertThat(view.reasonCount()).isEqualTo(0);
         });
     }
 }
