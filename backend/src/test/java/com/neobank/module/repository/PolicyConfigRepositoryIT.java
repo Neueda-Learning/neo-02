@@ -15,7 +15,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.neobank.module.model.PolicyConfig;
 
-/** Verifies the UC07 entity, JSON converters and Liquibase v1 seed against real MySQL. */
+/** Verifies the UC07/UC08 entity, JSON converters and Liquibase v1 seed against real MySQL. */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
 @Transactional
@@ -56,5 +56,44 @@ class PolicyConfigRepositoryIT {
         assertThat(v1.getSampleEvery()).isEqualTo(7);
         assertThat(v2.getSampleEvery()).isEqualTo(3);
         assertThat(configs.count()).isEqualTo(2);
+    }
+
+    // ── UC08 tests ────────────────────────────────────────────────────────────
+
+    @Test
+    void versionsAreReturnedOldestFirst() {
+        configs.saveAndFlush(new PolicyConfig(2,
+                List.of("GB"), List.of("US"),
+                List.of(new PolicyConfig.RestrictionEntry("Jane Doe", "1990-01-01", "test")),
+                3));
+
+        List<PolicyConfig> all = configs.findAllByOrderByVersionAsc();
+
+        assertThat(all).hasSize(2);
+        assertThat(all.get(0).getVersion()).isEqualTo(1);
+        assertThat(all.get(1).getVersion()).isEqualTo(2);
+    }
+
+    @Test
+    void historyIsNeverEmpty_seedGuaranteesV1() {
+        List<PolicyConfig> all = configs.findAllByOrderByVersionAsc();
+        assertThat(all).isNotEmpty();
+        assertThat(all.get(0).getVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void afterUc07DemoInsertHistoryShowsV1AndV2WithV2Current() {
+        configs.saveAndFlush(new PolicyConfig(2,
+                List.of("GB", "IE"), List.of("US"),
+                List.of(new PolicyConfig.RestrictionEntry("Victor Sable", "1978-03-02", "prior fraud loss")),
+                5));
+
+        List<PolicyConfig> all = configs.findAllByOrderByVersionAsc();
+        int maxVersion = all.stream().mapToInt(PolicyConfig::getVersion).max().orElseThrow();
+
+        assertThat(all).hasSize(2);
+        assertThat(all.get(0).getVersion()).isEqualTo(1);
+        assertThat(all.get(1).getVersion()).isEqualTo(2);
+        assertThat(maxVersion).isEqualTo(2); // v2 is current
     }
 }
