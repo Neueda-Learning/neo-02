@@ -3,12 +3,15 @@ package com.neobank.module.controller;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import com.neobank.module.service.PolicyConfigValidationException;
 
 /**
  * Turns exceptions into a stable JSON error shape, so the front end and the orchestrator get a
@@ -54,6 +57,16 @@ public class GlobalExceptionHandler {
         int newline = message == null ? -1 : message.indexOf('\n');
         return error(HttpStatus.BAD_REQUEST,
                 "malformed request body: " + (newline > 0 ? message.substring(0, newline) : message));
+    }
+
+    /**
+     * A {@code POST /config} document failed a cross-field business rule (UC07) — a country on
+     * both residency lists, a restriction entry missing a field, or {@code sampleEvery < 1}.
+     */
+    @ExceptionHandler(PolicyConfigValidationException.class)
+    public ResponseEntity<Map<String, Object>> handlePolicyConfigValidation(
+            PolicyConfigValidationException ex) {
+        return error(HttpStatus.BAD_REQUEST, String.join("; ", ex.getErrors()));
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
