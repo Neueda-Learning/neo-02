@@ -33,7 +33,7 @@ class PolicyConfigValidatorTest {
 
         assertThatThrownBy(() -> validator.validate(request))
                 .isInstanceOf(PolicyConfigValidationException.class)
-                .hasMessageContaining("cannot appear on both");
+                .hasMessageContaining("cannot also appear");
     }
 
     @Test
@@ -75,6 +75,17 @@ class PolicyConfigValidatorTest {
 
         assertThatThrownBy(() -> validator.validate(request))
                 .isInstanceOf(PolicyConfigValidationException.class)
-                .hasMessageContaining("must be an uppercase ISO alpha-2 country code");
+                .hasMessageContaining("must be an assigned uppercase ISO 3166-1 alpha-2 country code");
+    }
+
+    @Test
+    void rejectsAnUnassignedAlpha2ShapeSuchAsZz() {
+        PolicyConfigRequest request = new PolicyConfigRequest(
+                List.of("ZZ"), List.of("US"), List.of(), 7);
+
+        assertThatThrownBy(() -> validator.validate(request))
+                .isInstanceOf(PolicyConfigValidationException.class)
+                .hasMessageContaining("supportedResidencies")
+                .hasMessageContaining("assigned uppercase ISO 3166-1 alpha-2");
     }
 }

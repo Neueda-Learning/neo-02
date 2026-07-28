@@ -2,6 +2,7 @@ package com.neobank.module.controller;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -36,11 +37,10 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
-        String detail = ex.getBindingResult().getFieldErrors().stream()
-                .map(fe -> fe.getField() + " " + fe.getDefaultMessage())
-                .reduce((a, b) -> a + "; " + b)
-                .orElse("validation failed");
-        return error(HttpStatus.BAD_REQUEST, detail);
+        List<Map<String, String>> errors = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fieldError(fe.getField(), fe.getDefaultMessage()))
+                .toList();
+        return validationError(errors);
     }
 
     /**
@@ -66,15 +66,39 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PolicyConfigValidationException.class)
     public ResponseEntity<Map<String, Object>> handlePolicyConfigValidation(
             PolicyConfigValidationException ex) {
-        return error(HttpStatus.BAD_REQUEST, String.join("; ", ex.getErrors()));
+        List<Map<String, String>> errors = ex.getErrors().stream()
+                .map(violation -> fieldError(violation.field(), violation.message()))
+                .toList();
+        return validationError(errors);
+    }
+
+    private ResponseEntity<Map<String, Object>> validationError(List<Map<String, String>> errors) {
+        String message = errors.stream()
+                .map(error -> error.get("field") + " " + error.get("message"))
+                .reduce((first, second) -> first + "; " + second)
+                .orElse("validation failed");
+        Map<String, Object> body = errorBody(HttpStatus.BAD_REQUEST, message);
+        body.put("errors", errors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    private Map<String, String> fieldError(String field, String message) {
+        Map<String, String> error = new LinkedHashMap<>();
+        error.put("field", field);
+        error.put("message", message);
+        return error;
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(errorBody(status, message));
+    }
+
+    private Map<String, Object> errorBody(HttpStatus status, String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
         body.put("message", message);
-        return ResponseEntity.status(status).body(body);
+        return body;
     }
 }
