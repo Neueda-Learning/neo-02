@@ -24,6 +24,9 @@ public class PolicyRecord {
     @Column(nullable = false, unique = true, length = 32)
     private String reference;
 
+    @Column(name = "rule_results", columnDefinition = "JSON")
+    private String ruleResults;
+
     @Column(name = "submitted_at", nullable = false)
     private Instant submittedAt;
 
@@ -70,6 +73,10 @@ public class PolicyRecord {
 
     public String getReference() {
         return reference;
+    }
+
+    public String getRuleResults() {
+        return ruleResults;
     }
 
     public Instant getSubmittedAt() {
