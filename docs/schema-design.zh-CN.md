@@ -346,7 +346,103 @@ sampling_position % sample_every == 0
 
 每个新 `application_id` 只执行一次 sampling；重复 `/execute` 不会再分配 position。
 
-## 8. Intake、幂等与 Callback 流程
+## 8. 状态转换、Intake、幂等与 Callback 流程
+
+Brief 在多个层次使用了“status”一词。这些值相互关联，但不能混用：
+
+| 层次 | 允许值 | 持久化方式与含义 |
+|---|---|---|
+| `202` acknowledgement | `in-progress` | 仅用于 response contract；表示 row 已 commit |
+| `policy_record.processing_status` | `IN_PROGRESS`、`DECIDED` | 本地 worker lifecycle；`DECIDED` 只表示机器处理完成，不表示人工不能修改 journey |
+| `policy_record.outcome` | null、`APPROVED`、`REJECTED`、`REFERRED` | 当前有效业务决定；只有 `IN_PROGRESS` 时允许为 null |
+| Referral queue projection | unclaimed、claimed | 由 `outcome = REFERRED` 和 `claimed_by` 派生；不是新的持久化 status enum |
+| Callback `status` | `completed`、`rejected`、`application-manual`、`local-manual` | 根据产生当前有效 outcome 的 transition，推导 orchestrator journey 指令 |
+
+### 8.1 完整 Case State Transition
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "IN_PROGRESS<br/>outcome = null" as IN_PROGRESS
+    state "DECIDED / APPROVED" as APPROVED
+    state "DECIDED / REJECTED" as REJECTED
+    state "DECIDED / REFERRED<br/>unclaimed" as REFERRED_OPEN
+    state "DECIDED / REFERRED<br/>claimed" as REFERRED_CLAIMED
+
+    [*] --> IN_PROGRESS : 新 /execute<br/>先 insert，再返回 202 in-progress
+
+    IN_PROGRESS --> APPROVED : 所有规则通过<br/>callback completed
+    IN_PROGRESS --> REJECTED : 任一拒绝规则命中<br/>callback rejected
+    IN_PROGRESS --> REFERRED_OPEN : Sampling 优先命中<br/>callback application-manual
+    IN_PROGRESS --> REFERRED_OPEN : Registry 重试 3 次仍不可用<br/>callback application-manual
+
+    REFERRED_OPEN --> REFERRED_CLAIMED : claim<br/>设置 claimed_by / claimed_at
+    REFERRED_CLAIMED --> REFERRED_OPEN : release<br/>清空 claim 字段
+    REFERRED_CLAIMED --> APPROVED : Queue 人工批准 + reason<br/>callback local-manual
+    REFERRED_CLAIMED --> REJECTED : Queue 人工拒绝 + reason<br/>callback local-manual
+
+    APPROVED --> REJECTED : Override + reason<br/>审计 + callback local-manual
+    REJECTED --> APPROVED : Override + reason<br/>审计 + callback local-manual
+    APPROVED --> REFERRED_OPEN : Override 为 REFERRED<br/>审计 + callback local-manual
+    REJECTED --> REFERRED_OPEN : Override 为 REFERRED<br/>审计 + callback local-manual
+```
+
+图中的 claimed/unclaimed 是同一个持久化状态 `DECIDED + REFERRED` 的两种视图。
+Claim 和 release 不修改 `processing_status` 或 `outcome`。所有人工 outcome 变更都必须
+保留 `machine_outcome`、`rule_results`、`policy_config_version` 和
+`sampling_position`。
+
+因此，进入 `REFERRED` 的三种业务原因是：
+
+1. 确定性 sampling；
+2. Registry 重试三次后仍不可用；
+3. Operator 将原来的 `APPROVED` 或 `REJECTED` override 为 `REFERRED`。
+
+前两种发送 `application-manual`；第三种由 operator 发起，因此发送
+`local-manual`。
+
+### 8.2 Transition 处理
+
+| Event | 要求的当前状态 | 原子化本地处理 | Callback / 结果 |
+|---|---|---|---|
+| 新 `/execute` | 不存在 row | 插入 `IN_PROGRESS`、null outcome、生成 reference 和 timestamps | 返回 `202 in-progress`；commit 后才启动 worker |
+| Machine approval | `IN_PROGRESS` | 固定 config 和 sampling position；保存 rule results；machine/effective outcome 设为 `APPROVED`，status 设为 `DECIDED` | `completed` |
+| Machine rejection | `IN_PROGRESS` | 保存全部 rejection reasons；machine/effective outcome 设为 `REJECTED`，status 设为 `DECIDED` | `rejected` |
+| Sampled referral | `IN_PROGRESS`，机器规则已完成 | 保留 sampling 前的 `machine_outcome`；effective outcome 设为 `REFERRED`，status 设为 `DECIDED` | `application-manual` |
+| Registry-unavailable referral | `IN_PROGRESS`，Registry 重试三次失败 | 保存 `POL_REGISTRY_UNAVAILABLE` 和其他 rule results；effective outcome 设为 `REFERRED`，status 设为 `DECIDED` | `application-manual` |
+| Claim | Open `REFERRED`，尚未领取 | 设置 `claimed_by`、`claimed_at`，增加 `lock_version` | 不发送 callback |
+| Release | `REFERRED`，由同一 operator 持有 | 清空 claim 字段，增加 `lock_version` | 不发送 callback |
+| Queue decision | `REFERRED`，由决定者 claim | Outcome 设为 `APPROVED` 或 `REJECTED`；写入 operator、reason 和 decision time；保留 machine fields | `local-manual`，reason code 为 `POL_MANUAL_APPROVED` 或 `POL_MANUAL_DECLINED` |
+| Override | 已有 `APPROVED` 或 `REJECTED`；target 是另一个允许值 | 更新 effective outcome 和 decision metadata；只追加一条 `override_log`；target 为 `REFERRED` 时清空 claim 字段 | `local-manual` |
+
+### 8.3 重复请求、非法转换与失败处理
+
+- `IN_PROGRESS` 时重复 `/execute`：返回相同 `202`；不重复 insert、不再分配
+  sampling position，也不启动第二个 worker。
+- `DECIDED` 后重复 `/execute`：不重跑 rules 或 registry；根据 decision source
+  推导 callback status，并重放已存储 outcome。
+- 同一 operator 重复 claim 是成功 no-op；其他 operator claim 返回 `409`。Case
+  已经 unclaimed 时重复 release 是成功 no-op；其他 operator release 返回 `409`。
+- Queue decision 或 override 与已存储的 human outcome、operator、reason 完全相同时，
+  返回当前 representation，不发送第二次 callback，也不追加第二条 audit row。不同的
+  stale command 返回 `409`。
+- 缺少必填字段返回 `400`；未知 `application_id` 返回 `404`；optimistic-lock guard
+  失败返回 `409`。这些情况都不修改数据、不发送 callback。
+- Callback transport 失败不能回滚已 commit 的 decision。已存储状态可以重放；如果要求
+  自动、持久化地重试 delivery attempts，则需要 outbox 或等价的第四张表。
+- Worker 出现未预期异常时，row 保持 `IN_PROGRESS`。Brief 没有定义 `FAILED` 业务状态，
+  recovery 必须恢复已有 row，不能自行发明 outcome。
+- Applicant proxy 失败不改变 case 状态；case 仍然显示，只有实时 applicant panel
+  degraded。
+
+这里有一个实现不能自行猜测的 contract 问题：UC06 允许
+`newOutcome = REFERRED`，但 callback acceptance criterion 只列出
+`POL_MANUAL_APPROVED` 和 `POL_MANUAL_DECLINED`。需要 instructor 确认是否确实允许
+override 到 `REFERRED`；如果允许，应使用哪个 locked reason code。不要自行新增
+`POL_MANUAL_REFERRED`。
+
+### 8.4 Intake Algorithm
 
 返回 `202` 前：
 
@@ -390,7 +486,10 @@ Queue decision 要求 outcome 为 `APPROVED` 或 `REJECTED`，并要求 `operato
 reason。它更新 `outcome`、`decided_by`、`decided_at`、`decision_reason`，但不修改
 machine fields，然后发送 `local-manual` callback。
 
-Override 使用相同 optimistic-lock 规则，并额外插入一条 `override_log`。
+Override 使用相同 optimistic-lock 规则，并额外插入一条 `override_log`。允许
+`APPROVED` 改为 `REJECTED` 或 `REFERRED`，也允许 `REJECTED` 改为 `APPROVED`
+或 `REFERRED`。已经 `REFERRED` 的 case 通过 claimed queue path 处理。完全相同的
+重复 override 是 no-op，不产生第二条 audit row 或 callback。
 
 ## 10. 数据归属与隐私
 

@@ -357,7 +357,110 @@ sampling_position % sample_every == 0
 Sampling applies only once per new `application_id`; repeated `/execute` calls
 never allocate another position.
 
-## 8. Intake, Idempotency, and Callback Flow
+## 8. State Transitions, Intake, Idempotency, and Callback Flow
+
+The brief uses the word "status" at several layers. They are related, but they
+are not interchangeable:
+
+| Layer | Allowed values | Persistence and meaning |
+|---|---|---|
+| `202` acknowledgement | `in-progress` | Response-only contract value; confirms that the row was committed |
+| `policy_record.processing_status` | `IN_PROGRESS`, `DECIDED` | Local worker lifecycle; `DECIDED` means the machine has finished, not that the journey cannot be changed by a human |
+| `policy_record.outcome` | null, `APPROVED`, `REJECTED`, `REFERRED` | Current effective business decision; null only while `IN_PROGRESS` |
+| Referral queue projection | unclaimed, claimed | Derived from `outcome = REFERRED` and `claimed_by`; not another persisted status enum |
+| Callback `status` | `completed`, `rejected`, `application-manual`, `local-manual` | Orchestrator journey instruction derived from the transition that produced the effective outcome |
+
+### 8.1 Complete Case State Transition
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "IN_PROGRESS<br/>outcome = null" as IN_PROGRESS
+    state "DECIDED / APPROVED" as APPROVED
+    state "DECIDED / REJECTED" as REJECTED
+    state "DECIDED / REFERRED<br/>unclaimed" as REFERRED_OPEN
+    state "DECIDED / REFERRED<br/>claimed" as REFERRED_CLAIMED
+
+    [*] --> IN_PROGRESS : new /execute<br/>insert before 202 in-progress
+
+    IN_PROGRESS --> APPROVED : all rules pass<br/>callback completed
+    IN_PROGRESS --> REJECTED : any rejection<br/>callback rejected
+    IN_PROGRESS --> REFERRED_OPEN : sampling wins<br/>callback application-manual
+    IN_PROGRESS --> REFERRED_OPEN : registry unavailable after 3 tries<br/>callback application-manual
+
+    REFERRED_OPEN --> REFERRED_CLAIMED : claim<br/>set claimed_by / claimed_at
+    REFERRED_CLAIMED --> REFERRED_OPEN : release<br/>clear claim fields
+    REFERRED_CLAIMED --> APPROVED : queue approves + reason<br/>callback local-manual
+    REFERRED_CLAIMED --> REJECTED : queue rejects + reason<br/>callback local-manual
+
+    APPROVED --> REJECTED : override + reason<br/>audit + callback local-manual
+    REJECTED --> APPROVED : override + reason<br/>audit + callback local-manual
+    APPROVED --> REFERRED_OPEN : override to REFERRED<br/>audit + callback local-manual
+    REJECTED --> REFERRED_OPEN : override to REFERRED<br/>audit + callback local-manual
+```
+
+This diagram deliberately shows claimed/unclaimed as two views of the same
+persisted `DECIDED + REFERRED` state. Claim and release do not change
+`processing_status` or `outcome`. Every human outcome change preserves
+`machine_outcome`, `rule_results`, `policy_config_version`, and
+`sampling_position`.
+
+The three business entrances to `REFERRED` are therefore:
+
+1. deterministic sampling;
+2. registry unavailable after three attempts;
+3. a human override of an `APPROVED` or `REJECTED` case.
+
+The first two emit `application-manual`; the third emits `local-manual` because
+the transition was made by an operator.
+
+### 8.2 Transition Processing
+
+| Event | Required current state | Atomic local processing | Callback / result |
+|---|---|---|---|
+| New `/execute` | No row | Insert `IN_PROGRESS`, null outcome, generated reference and timestamps | Return `202 in-progress`; start worker only after commit |
+| Machine approval | `IN_PROGRESS` | Pin config and sampling position; store rule results; set machine/effective outcome `APPROVED` and status `DECIDED` | `completed` |
+| Machine rejection | `IN_PROGRESS` | Store every rejection reason; set machine/effective outcome `REJECTED` and status `DECIDED` | `rejected` |
+| Sampled referral | `IN_PROGRESS`, machine rules completed | Preserve the pre-sampling `machine_outcome`; set effective outcome `REFERRED` and status `DECIDED` | `application-manual` |
+| Registry-unavailable referral | `IN_PROGRESS`, registry failed after three attempts | Store `POL_REGISTRY_UNAVAILABLE` and all other rule results; set effective outcome `REFERRED` and status `DECIDED` | `application-manual` |
+| Claim | Open `REFERRED`, unclaimed | Set `claimed_by`, `claimed_at`, increment `lock_version` | No callback |
+| Release | `REFERRED`, claimed by the same operator | Clear claim fields, increment `lock_version` | No callback |
+| Queue decision | `REFERRED`, claimed by the deciding operator | Set outcome to `APPROVED` or `REJECTED`; write operator, reason and decision time; keep machine fields | `local-manual` with `POL_MANUAL_APPROVED` or `POL_MANUAL_DECLINED` |
+| Override | Existing `APPROVED` or `REJECTED`; target is a different allowed outcome | Update effective outcome and decision metadata; append exactly one `override_log`; clear claim fields when target is `REFERRED` | `local-manual` |
+
+### 8.3 Duplicate, Invalid, and Failure Handling
+
+- Duplicate `/execute` while `IN_PROGRESS`: return the same `202`; do not insert,
+  allocate another sampling position, or start a second worker.
+- Duplicate `/execute` after `DECIDED`: do not re-run rules or the registry;
+  replay the stored outcome using the callback status implied by its decision
+  source.
+- Repeated claim by the same operator is a successful no-op; claim by another
+  operator returns `409`. Repeated release of an already unclaimed case is a
+  successful no-op; release by another operator returns `409`.
+- A repeated queue decision or override that exactly matches the stored human
+  outcome, operator, and reason returns the current representation without a
+  second callback or audit row. A different stale command returns `409`.
+- Missing required fields return `400`; unknown `application_id` returns `404`;
+  failed optimistic-lock guards return `409`. None of these mutate data or send
+  a callback.
+- Callback transport failure does not roll back a committed decision. The stored
+  state is replayable; autonomous durable retry attempts would require an outbox
+  or equivalent fourth table.
+- An unexpected worker failure leaves the row `IN_PROGRESS`; no `FAILED` business
+  status exists in the brief, so recovery must resume the existing row rather
+  than inventing a new outcome.
+- Applicant-proxy failure does not change the case state; the case still renders
+  and only the live applicant panel degrades.
+
+There is one contract question that the implementation must not guess: UC06
+allows `newOutcome = REFERRED`, but its callback acceptance criterion names only
+`POL_MANUAL_APPROVED` and `POL_MANUAL_DECLINED`. The instructor must confirm
+whether override-to-`REFERRED` is intended and, if so, which locked reason code
+it uses. Do not invent `POL_MANUAL_REFERRED`.
+
+### 8.4 Intake Algorithm
 
 Before returning `202`:
 
@@ -403,7 +506,10 @@ reason. It updates `outcome`, `decided_by`, `decided_at`, and `decision_reason`
 without changing machine fields, then emits a `local-manual` callback.
 
 An override uses the same optimistic-lock discipline and additionally appends an
-`override_log` row.
+`override_log` row. It may change `APPROVED` to `REJECTED` or `REFERRED`, or
+`REJECTED` to `APPROVED` or `REFERRED`. A referred case is worked through the
+claimed queue path. An exact repeated override is a no-op; it does not create a
+second audit row or callback.
 
 ## 10. Data Ownership and Privacy
 
