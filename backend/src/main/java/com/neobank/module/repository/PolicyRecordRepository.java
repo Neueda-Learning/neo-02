@@ -1,5 +1,6 @@
 package com.neobank.module.repository;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
@@ -26,4 +27,12 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
     @Query(value = "SELECT p FROM PolicyRecord p WHERE p.applicationId IN :applicationIds ORDER BY p.submittedAt DESC")
     List<PolicyRecord> findByApplicationIdInOrderBySubmittedAtDesc(
             @Param("applicationIds") List<String> applicationIds);
+
+        @Query("""
+            select p from PolicyRecord p
+            where p.submittedAt >= :fromInclusive and p.submittedAt <= :toInclusive
+            """)
+        List<PolicyRecord> findBySubmittedAtBetweenInclusive(
+            @Param("fromInclusive") Instant fromInclusive,
+            @Param("toInclusive") Instant toInclusive);
 }

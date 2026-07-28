@@ -1,0 +1,52 @@
+# UC05 fixture rows for 2026-07-01..2026-07-14 rejection/review pattern checkpoints.
+databaseChangeLog:
+  - changeSet:
+      id: 008-seed-uc05-reason-code-window
+      author: neo-02
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO policy_record (application_id, processing_status, outcome, machine_outcome, reference, policy_config_version, sampling_position, rule_results, submitted_at, created_at, updated_at, lock_version)
+              VALUES
+                ('uc05-samp-01', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-01', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-01 10:00:00', '2026-07-01 10:00:00', '2026-07-01 10:00:00', 0),
+                ('uc05-samp-02', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-02', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-01 10:10:00', '2026-07-01 10:10:00', '2026-07-01 10:10:00', 0),
+                ('uc05-samp-03', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-03', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-01 10:20:00', '2026-07-01 10:20:00', '2026-07-01 10:20:00', 0),
+                ('uc05-samp-04', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-04', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-02 10:00:00', '2026-07-02 10:00:00', '2026-07-02 10:00:00', 0),
+                ('uc05-samp-05', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-05', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-02 10:10:00', '2026-07-02 10:10:00', '2026-07-02 10:10:00', 0),
+                ('uc05-samp-06', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-06', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-02 10:20:00', '2026-07-02 10:20:00', '2026-07-02 10:20:00', 0),
+                ('uc05-samp-07', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-07', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-03 10:00:00', '2026-07-03 10:00:00', '2026-07-03 10:00:00', 0),
+                ('uc05-samp-08', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-08', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-03 10:10:00', '2026-07-03 10:10:00', '2026-07-03 10:10:00', 0),
+                ('uc05-samp-09', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-09', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-03 10:20:00', '2026-07-03 10:20:00', '2026-07-03 10:20:00', 0),
+                ('uc05-samp-10', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-10', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-04 10:00:00', '2026-07-04 10:00:00', '2026-07-04 10:00:00', 0),
+                ('uc05-samp-11', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-11', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-04 10:10:00', '2026-07-04 10:10:00', '2026-07-04 10:10:00', 0),
+                ('uc05-samp-12', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-12', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-04 10:20:00', '2026-07-04 10:20:00', '2026-07-04 10:20:00', 0),
+                ('uc05-samp-13', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-13', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-05 10:00:00', '2026-07-05 10:00:00', '2026-07-05 10:00:00', 0),
+                ('uc05-samp-14', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-14', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-05 10:10:00', '2026-07-05 10:10:00', '2026-07-05 10:10:00', 0),
+                ('uc05-samp-15', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-15', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-05 10:20:00', '2026-07-05 10:20:00', '2026-07-05 10:20:00', 0),
+                ('uc05-samp-16', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-16', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-06 10:00:00', '2026-07-06 10:00:00', '2026-07-06 10:00:00', 0),
+                ('uc05-samp-17', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-17', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-06 10:10:00', '2026-07-06 10:10:00', '2026-07-06 10:10:00', 0),
+                ('uc05-samp-18', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-18', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-06 10:20:00', '2026-07-06 10:20:00', '2026-07-06 10:20:00', 0),
+                ('uc05-samp-19', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-19', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-07 10:00:00', '2026-07-07 10:00:00', '2026-07-07 10:00:00', 0),
+                ('uc05-samp-20', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-20', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-07 10:10:00', '2026-07-07 10:10:00', '2026-07-07 10:10:00', 0),
+                ('uc05-samp-21', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-21', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-07 10:20:00', '2026-07-07 10:20:00', '2026-07-07 10:20:00', 0),
+                ('uc05-samp-22', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-22', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-08 10:00:00', '2026-07-08 10:00:00', '2026-07-08 10:00:00', 0),
+                ('uc05-samp-23', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-23', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-08 10:10:00', '2026-07-08 10:10:00', '2026-07-08 10:10:00', 0),
+                ('uc05-samp-24', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-24', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-08 10:20:00', '2026-07-08 10:20:00', '2026-07-08 10:20:00', 0),
+                ('uc05-samp-25', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-25', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-09 10:00:00', '2026-07-09 10:00:00', '2026-07-09 10:00:00', 0),
+                ('uc05-samp-26', 'DECIDED', 'REFERRED', 'APPROVED', 'pol-uc05-samp-26', 1, NULL, '{"reasons":[{"code":"POL_SAMPLED_FOR_REVIEW"}],"sampling":{"sampled":true}}', '2026-07-09 10:10:00', '2026-07-09 10:10:00', '2026-07-09 10:10:00', 0),
+                ('uc05-unsup-01', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-unsup-01', 1, NULL, '{"reasons":[{"code":"POL_TAX_RESIDENCY_UNSUPPORTED"}],"taxResidency":{"matchedList":[],"excluded":false}}', '2026-07-10 11:00:00', '2026-07-10 11:00:00', '2026-07-10 11:00:00', 0),
+                ('uc05-unsup-02', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-unsup-02', 1, NULL, '{"reasons":[{"code":"POL_TAX_RESIDENCY_UNSUPPORTED"}],"taxResidency":{"matchedList":[],"excluded":false}}', '2026-07-10 11:10:00', '2026-07-10 11:10:00', '2026-07-10 11:10:00', 0),
+                ('uc05-unsup-03', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-unsup-03', 1, NULL, '{"reasons":[{"code":"POL_TAX_RESIDENCY_UNSUPPORTED"}],"taxResidency":{"matchedList":[],"excluded":false}}', '2026-07-11 11:00:00', '2026-07-11 11:00:00', '2026-07-11 11:00:00', 0),
+                ('uc05-unsup-04', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-unsup-04', 1, NULL, '{"reasons":[{"code":"POL_TAX_RESIDENCY_UNSUPPORTED"}],"taxResidency":{"matchedList":[],"excluded":false}}', '2026-07-11 11:10:00', '2026-07-11 11:10:00', '2026-07-11 11:10:00', 0),
+                ('uc05-exist-01', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-exist-01', 1, NULL, '{"reasons":[{"code":"POL_EXISTING_PRODUCT_HELD"}],"existingProduct":{"registered":true,"registryChecked":true}}', '2026-07-12 09:00:00', '2026-07-12 09:00:00', '2026-07-12 09:00:00', 0),
+                ('uc05-exist-02', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-exist-02', 1, NULL, '{"reasons":[{"code":"POL_EXISTING_PRODUCT_HELD"}],"existingProduct":{"registered":true,"registryChecked":true}}', '2026-07-12 09:10:00', '2026-07-12 09:10:00', '2026-07-12 09:10:00', 0),
+                ('uc05-exist-03', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-exist-03', 1, NULL, '{"reasons":[{"code":"POL_EXISTING_PRODUCT_HELD"}],"existingProduct":{"registered":true,"registryChecked":true}}', '2026-07-12 09:20:00', '2026-07-12 09:20:00', '2026-07-12 09:20:00', 0),
+                ('uc05-excl-01', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-excl-01', 1, NULL, '{"reasons":[{"code":"POL_TAX_RESIDENCY_EXCLUDED"}],"taxResidency":{"residency":"US","excluded":true}}', '2026-07-13 08:00:00', '2026-07-13 08:00:00', '2026-07-13 08:00:00', 0),
+                ('uc05-excl-02', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-excl-02', 1, NULL, '{"reasons":[{"code":"POL_TAX_RESIDENCY_EXCLUDED"}],"taxResidency":{"residency":"US","excluded":true}}', '2026-07-13 08:10:00', '2026-07-13 08:10:00', '2026-07-13 08:10:00', 0),
+                ('uc05-blkd-01', 'DECIDED', 'REJECTED', 'REJECTED', 'pol-uc05-blkd-01', 1, NULL, '{"reasons":[{"code":"POL_CUSTOMER_BLOCKED"}],"restrictionList":{"blocked":true,"notRestricted":false}}', '2026-07-14 07:30:00', '2026-07-14 07:30:00', '2026-07-14 07:30:00', 0);
+      rollback:
+        - delete:
+            tableName: policy_record
+            where: application_id LIKE 'uc05-%'

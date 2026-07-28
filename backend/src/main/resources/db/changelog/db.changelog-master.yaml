@@ -16,3 +16,5 @@ databaseChangeLog:
       file: db/changelog/changes/006-drop-demo-showcase.yaml
   - include:
       file: db/changelog/changes/007-seed-uc01-test-cases.yaml
+  - include:
+      file: db/changelog/changes/008-seed-uc05-reason-code-window.yaml
