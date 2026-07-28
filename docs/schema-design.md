@@ -354,8 +354,9 @@ one document. The brief does not require independent CRUD, joins, or reports ove
 individual residency or restriction rows. Versioning the complete document also
 prevents a case from observing a mixture of old and new lists.
 
-Publishing a version runs in one transaction, locks the current maximum version,
-and inserts `MAX(version) + 1`. Existing versions are never updated or deleted.
+Publishing a version runs in one transaction, locks the immutable seeded
+`policy_config.version = 1` allocator row, reads the current maximum version, and
+inserts `MAX(version) + 1`. Existing versions are never updated or deleted.
 
 ### 6.3 `override_log`
 
@@ -389,9 +390,9 @@ the position in `ruleResults.sampling.position`.
 
 The request thread allocates `sampling_position` in the short intake transaction:
 
-1. lock the current `policy_config` row with `SELECT ... FOR UPDATE`;
-2. read `MAX(policy_record.sampling_position) + 1`;
-3. insert the case with its config version and sampling position;
+1. acquire UC07's shared `policy_config.version = 1` allocator lock;
+2. read the latest config version and `MAX(policy_record.sampling_position) + 1`;
+3. insert the case with that config version and sampling position;
 4. commit immediately;
 5. return `202`, then perform registry and rule calls outside the lock.
 
@@ -516,7 +517,8 @@ it uses. Do not invent `POL_MANUAL_REFERRED`.
 Before returning `202`:
 
 1. validate `applicationId` and `command = check-policy`;
-2. lock the current config and allocate the next sampling position;
+2. acquire the shared UC07 config allocator lock, read the current config, and
+   allocate the next sampling position;
 3. insert one `policy_record` with `processing_status = IN_PROGRESS`, the config version,
    and the sampling position;
 4. on duplicate `application_id`, load the existing row instead;

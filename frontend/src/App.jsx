@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
 import DecisionDetailScreen from './components/DecisionDetailScreen.jsx';
 import RequestsScreen from './components/RequestsScreen.jsx';
+import PolicyConfigScreen from './components/PolicyConfigScreen.jsx';
 import { api } from './api.js';
 
 const POLL_MS = 2000;
@@ -56,7 +57,7 @@ export default function App() {
       disabled: !selectedCaseId,
     },
     { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
-    { id: 'settings', label: 'Settings', hint: 'reference data', disabled: true },
+    { id: 'settings', label: 'Policy Config' },
   ];
 
   const openCase = (row) => {
@@ -100,6 +101,7 @@ export default function App() {
           onBack={() => setScreen('applications')}
         />
       )}
+      {screen === 'settings' && <PolicyConfigScreen />}
     </AppShell>
   );
 }

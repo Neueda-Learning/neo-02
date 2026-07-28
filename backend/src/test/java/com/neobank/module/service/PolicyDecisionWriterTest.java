@@ -2,6 +2,7 @@ package com.neobank.module.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.neobank.module.model.PolicyConfig;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +32,9 @@ class PolicyDecisionWriterTest {
     private PolicyDecisionWriter decisions;
 
     @Autowired
+    private PolicyConfigWriter configWriter;
+
+    @Autowired
     private JdbcTemplate jdbc;
 
     @BeforeEach
@@ -49,6 +53,17 @@ class PolicyDecisionWriterTest {
 
         assertThat(second.policyConfigVersion()).isEqualTo(first.policyConfigVersion());
         assertThat(second.samplingPosition()).isEqualTo(first.samplingPosition());
+    }
+
+    @Test
+    void intakePinsTheLatestVersionPublishedThroughUc07() {
+        PolicyConfig published = configWriter.publish(
+                List.of("GB", "CA"), List.of("US"), List.of(), 11);
+
+        assertThat(intake.createIfAbsent("PIN-UC07-CONFIG")).isTrue();
+
+        assertThat(decisions.pinContext("PIN-UC07-CONFIG").policyConfigVersion())
+                .isEqualTo(published.getVersion());
     }
 
     @Test

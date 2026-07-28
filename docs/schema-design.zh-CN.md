@@ -343,8 +343,8 @@ Insert 前验证：
 residency 或 restriction row 做独立 CRUD、join 或 reporting。完整 document
 versioning 还可以避免 case 同时读取到新旧 list 的混合状态。
 
-发布新版本时，在一个事务中锁定当前最大版本，并插入 `MAX(version) + 1`。已有版本永不
-更新或删除。
+发布新版本时，在一个事务中锁定不可变的种子行 `policy_config.version = 1`，然后读取
+当前最大版本并插入 `MAX(version) + 1`。已有版本永不更新或删除。
 
 ### 6.3 `override_log`
 
@@ -378,9 +378,9 @@ Brief 要求每 X 个首次 policy decision 转人工，并在
 
 Request thread 在短 intake 事务中分配 `sampling_position`：
 
-1. 使用 `SELECT ... FOR UPDATE` 锁定 current `policy_config` row；
-2. 读取 `MAX(policy_record.sampling_position) + 1`；
-3. 插入 case，并同时写入 config version 和 sampling position；
+1. 获取 UC07 共用的 `policy_config.version = 1` allocator lock；
+2. 读取最新 config version 和 `MAX(policy_record.sampling_position) + 1`；
+3. 插入 case，并同时写入该 config version 和 sampling position；
 4. 立即 commit；
 5. 返回 `202`，然后在锁外执行 registry 和 rule calls。
 
@@ -497,7 +497,8 @@ override 到 `REFERRED`；如果允许，应使用哪个 locked reason code。�
 返回 `202` 前：
 
 1. 验证 `applicationId` 和 `command = check-policy`；
-2. 锁定 current config 并分配下一个 sampling position；
+2. 获取 UC07 共用的 config allocator lock，读取 current config 并分配下一个
+   sampling position；
 3. 插入一条包含 config version 和 sampling position、且
    `processing_status = IN_PROGRESS` 的 `policy_record`；
 4. 如果 `application_id` 重复，则读取现有 row；

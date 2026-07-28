@@ -1,5 +1,6 @@
 package com.neobank.module.service;
 
+import com.neobank.module.repository.PolicyConfigRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Locale;
@@ -13,32 +14,29 @@ import org.springframework.transaction.annotation.Transactional;
 public class PolicyRecordWriter {
 
     private final JdbcTemplate jdbc;
+    private final PolicyConfigRepository configs;
 
-    public PolicyRecordWriter(JdbcTemplate jdbc) {
+    public PolicyRecordWriter(JdbcTemplate jdbc, PolicyConfigRepository configs) {
         this.jdbc = jdbc;
+        this.configs = configs;
     }
 
     /**
      * Returns true only for the caller that inserted the row. The primary key makes the insert
      * atomic under concurrent retries; returning means the transaction has committed.
      *
-     * <p>The current config row serializes first-time intake. Assigning the sampling position here
-     * makes it follow durable acceptance order instead of whichever async worker happens to run
-     * first.</p>
+     * <p>UC07's immutable version-1 allocator row serializes config publishers and first-time
+     * intake. Assigning the config and sampling position under that shared lock gives both
+     * operations one deterministic order.</p>
      */
     @Transactional
     public boolean createIfAbsent(String applicationId) {
-        Integer currentVersion = jdbc.queryForObject("""
-                        SELECT version
-                        FROM policy_config
-                        ORDER BY version DESC
-                        LIMIT 1
-                        FOR UPDATE
-                        """,
-                Integer.class);
-        if (currentVersion == null) {
-            throw new IllegalStateException("No policy config is available");
-        }
+        configs.lockVersionAllocator()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Seeded policy config version 1 is missing"));
+        int currentVersion = configs.findFirstByOrderByVersionDesc()
+                .orElseThrow(() -> new IllegalStateException("No policy config is available"))
+                .getVersion();
 
         Long nextPosition = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(sampling_position), 0) + 1 FROM policy_record", Long.class);

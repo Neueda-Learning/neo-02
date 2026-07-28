@@ -8,8 +8,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * {@code POST /config} body (UC07) — the whole policy document, published as one brand-new
- * version. There is no partial update: a missing list is not inherited from the current version.
+ * {@code POST /config} body (UC07) — the whole policy document. A document different from the
+ * current one becomes a new version; an exact replay is a no-op. There is no partial update.
  */
 public record PolicyConfigRequest(
         @NotNull List<String> supportedResidencies,
