@@ -1,0 +1,20 @@
+{
+  "applicationId": "app-1287",
+  "correlationId": "uc02-app-1287",
+  "command": "process-application",
+  "application": {
+    "applicationId": "app-1287",
+    "channel": "MOBILE_APP",
+    "submittedAt": "2026-07-28T09:20:00Z",
+    "applicant": {
+      "fullName": "Elena Fischer",
+      "dateOfBirth": "1994-08-16",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["GB"]
+    },
+    "product": {
+      "productCode": "CREDIT_CARD_STANDARD",
+      "requestedCreditLimit": 1800
+    }
+  }
+}

@@ -8,9 +8,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -27,6 +30,14 @@ class PolicyDecisionWriterTest {
     @Autowired
     private PolicyDecisionWriter decisions;
 
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @BeforeEach
+    void clearCases() {
+        jdbc.update("DELETE FROM policy_record");
+    }
+
     @Test
     void pinningTheSameCaseTwiceReusesItsOriginalContext() {
         intake.createIfAbsent("PIN-IDEMPOTENT");
@@ -42,16 +53,14 @@ class PolicyDecisionWriterTest {
 
     @Test
     void concurrentFirstDecisionsReceiveDistinctSamplingPositions() throws Exception {
-        intake.createIfAbsent("PIN-CONCURRENT-A");
-        intake.createIfAbsent("PIN-CONCURRENT-B");
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<PolicyDecisionWriter.DecisionContext> first =
-                    executor.submit(() -> pin("PIN-CONCURRENT-A", ready, start));
+                    executor.submit(() -> accept("PIN-CONCURRENT-A", ready, start));
             Future<PolicyDecisionWriter.DecisionContext> second =
-                    executor.submit(() -> pin("PIN-CONCURRENT-B", ready, start));
+                    executor.submit(() -> accept("PIN-CONCURRENT-B", ready, start));
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
 
@@ -62,10 +71,25 @@ class PolicyDecisionWriterTest {
         }
     }
 
-    private PolicyDecisionWriter.DecisionContext pin(
+    @Test
+    void theTwentyFirstAcceptedApplicationIsApp1287() {
+        assertThat(intake.createIfAbsent("app-1234")).isTrue();
+        assertThat(intake.createIfAbsent("app-1240")).isTrue();
+        assertThat(intake.createIfAbsent("app-1242")).isTrue();
+        IntStream.rangeClosed(4, 20)
+                .forEach(position ->
+                        assertThat(intake.createIfAbsent("app-filler-" + position)).isTrue());
+        assertThat(intake.createIfAbsent("app-1287")).isTrue();
+
+        assertThat(decisions.pinContext("app-1234").samplingPosition()).isEqualTo(1);
+        assertThat(decisions.pinContext("app-1287").samplingPosition()).isEqualTo(21);
+    }
+
+    private PolicyDecisionWriter.DecisionContext accept(
             String applicationId, CountDownLatch ready, CountDownLatch start) throws Exception {
         ready.countDown();
         start.await(5, TimeUnit.SECONDS);
+        assertThat(intake.createIfAbsent(applicationId)).isTrue();
         return decisions.pinContext(applicationId);
     }
 }

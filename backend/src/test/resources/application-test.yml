@@ -23,3 +23,6 @@ service:
   domain: policy
   orchestrator-url: http://localhost:9
   mocked-dependencies: customer-registry
+
+registry:
+  mode: in-memory

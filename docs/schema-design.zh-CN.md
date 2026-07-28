@@ -218,8 +218,8 @@ decision trace 和 reporting source 的职责。
 | `outcome` | `VARCHAR(16)` | 是 | Rule engine、queue reviewer 或 override request | 当前结果：`APPROVED`、`REJECTED` 或 `REFERRED` |
 | `machine_outcome` | `VARCHAR(16)` | 是 | Customer Policy rule engine | Sampling 和人工介入前规则 1-3 的结果；永不覆盖 |
 | `reference` | `VARCHAR(32)` | 否 | Customer Policy service 在 insert 前生成 | 唯一操作员 reference |
-| `policy_config_version` | `INT` | 是 | Worker 选择的 current `policy_config` | FK → 使用的 config；worker 启动前为空 |
-| `sampling_position` | `BIGINT` | 是 | Customer Policy service sampling allocator | Every-X rule 使用的唯一首次决策序号 |
+| `policy_config_version` | `INT` | 是 | Intake 选择的 current `policy_config` | FK → 使用的 config；返回 `202` 前固定 |
+| `sampling_position` | `BIGINT` | 是 | Customer Policy intake allocator | Every-X rule 使用的唯一持久化接收序号；返回 `202` 前固定 |
 | `rule_results` | `JSON` | 是 | Rule engine，由内存 application、policy config 和 live registry result 派生 | 四个嵌入式 rule sections；处理期间为空 |
 | `claimed_by` | `VARCHAR(100)` | 是 | 已认证 operator，来自 claim request | 当前领取 referred case 的 operator |
 | `claimed_at` | `TIMESTAMP(6)` | 是 | Claim 成功时的 service/database clock | 领取时间 |
@@ -376,17 +376,17 @@ Override transaction 更新 `policy_record.outcome` 和 decision metadata，并�
 Brief 要求每 X 个首次 policy decision 转人工，并在
 `ruleResults.sampling.position` 中展示 position。
 
-Worker 在一个短事务中分配 `sampling_position`：
+Request thread 在短 intake 事务中分配 `sampling_position`：
 
 1. 使用 `SELECT ... FOR UPDATE` 锁定 current `policy_config` row；
 2. 读取 `MAX(policy_record.sampling_position) + 1`；
-3. 设置 case 的 config version 和 sampling position；
+3. 插入 case，并同时写入 config version 和 sampling position；
 4. 立即 commit；
-5. 在锁外执行 registry 和 rule calls。
+5. 返回 `202`，然后在锁外执行 registry 和 rule calls。
 
 `sampling_position` 唯一约束是最后的并发保护。这样可以把精确 sampling 保留在
 `policy_record` 中，而不引入单独的 counter entity。必须在 MySQL 8.4 上使用并发
-worker 测试该分配过程。
+intake 测试该分配过程。
 
 抽样条件：
 
@@ -497,18 +497,20 @@ override 到 `REFERRED`；如果允许，应使用哪个 locked reason code。�
 返回 `202` 前：
 
 1. 验证 `applicationId` 和 `command = check-policy`；
-2. 插入一条 `processing_status = IN_PROGRESS` 的 `policy_record`；
-3. 如果 `application_id` 重复，则读取现有 row；
-4. commit；
-5. 返回锁定的 acknowledgement body；
-6. 只有 commit 后才触发处理。
+2. 锁定 current config 并分配下一个 sampling position；
+3. 插入一条包含 config version 和 sampling position、且
+   `processing_status = IN_PROGRESS` 的 `policy_record`；
+4. 如果 `application_id` 重复，则读取现有 row；
+5. commit；
+6. 返回锁定的 acknowledgement body；
+7. 只有 commit 后才触发处理。
 
 Request thread 不调用 provider，也不执行 policy rule。已提交的 row 是持久化
 hand-off。Recovery 扫描遗留的 `IN_PROGRESS` rows，并从 orchestrator 实时获取
 application；payload 仍然不落库。
 
-Decision worker 在一个事务中保存 config version、position、rule results、outcomes 和
-`processing_status = DECIDED`，然后发送 callback。
+Decision worker 读取已固定的 config version 和 position，然后在一个事务中保存
+rule results、outcomes 和 `processing_status = DECIDED`，再发送 callback。
 
 重复 `/execute` 时：
 

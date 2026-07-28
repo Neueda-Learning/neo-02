@@ -20,26 +20,9 @@ public class PolicyDecisionWriter {
         this.records = records;
     }
 
-    /**
-     * Pins the current config and next first-decision position exactly once.
-     *
-     * <p>The current config row is a concrete lock target, so concurrent decision workers cannot
-     * allocate the same sampling position. No applicant payload is stored.</p>
-     */
+    /** Reads the decision context that intake pinned before acknowledging the request. */
     @Transactional
     public DecisionContext pinContext(String applicationId) {
-        Integer currentVersion = jdbc.queryForObject("""
-                        SELECT version
-                        FROM policy_config
-                        ORDER BY version DESC
-                        LIMIT 1
-                        FOR UPDATE
-                        """,
-                Integer.class);
-        if (currentVersion == null) {
-            throw new IllegalStateException("No policy config is available");
-        }
-
         List<DecisionContext> existing = jdbc.query("""
                         SELECT policy_config_version, sampling_position, processing_status
                         FROM policy_record
@@ -56,27 +39,11 @@ public class PolicyDecisionWriter {
         }
 
         DecisionContext context = existing.getFirst();
-        if (context.policyConfigVersion() != null && context.samplingPosition() != null) {
-            return context;
-        }
-        if (context.policyConfigVersion() != null || context.samplingPosition() != null) {
+        if (context.policyConfigVersion() == null || context.samplingPosition() == null) {
             throw new IllegalStateException("Policy case " + applicationId
                     + " has an incomplete decision context");
         }
-
-        Long nextPosition = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(sampling_position), 0) + 1 FROM policy_record", Long.class);
-        if (nextPosition == null) {
-            throw new IllegalStateException("Sampling position could not be allocated");
-        }
-        jdbc.update("""
-                        UPDATE policy_record
-                        SET policy_config_version = ?, sampling_position = ?,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE application_id = ?
-                        """,
-                currentVersion, nextPosition, applicationId);
-        return new DecisionContext(currentVersion, nextPosition, false);
+        return context;
     }
 
     /** Returns true only for the worker that changes the row to DECIDED. */

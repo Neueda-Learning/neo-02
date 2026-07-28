@@ -79,6 +79,14 @@ service:
 cors:
   allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
 
+# The v5 brief requires HTTP Registry access in integration, but the orchestrator has not yet
+# published the endpoint path. Local development stays explicit about using the fixture; an
+# integration environment switches to http and supplies a URI template such as:
+#   https://orchestrator/.../{applicationId}?fullName={fullName}&dateOfBirth={dateOfBirth}
+registry:
+  mode: ${REGISTRY_MODE:in-memory}
+  lookup-url: ${REGISTRY_LOOKUP_URL:}
+
 management:
   endpoints:
     web:
