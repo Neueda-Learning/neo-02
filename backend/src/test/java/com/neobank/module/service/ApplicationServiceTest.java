@@ -7,10 +7,13 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.data.domain.Pageable;
 
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
@@ -91,5 +94,24 @@ class ApplicationServiceTest {
             assertThat(view.sampled()).isFalse();
             assertThat(view.reasonCount()).isEqualTo(0);
         });
+    }
+
+    @Test
+    void searchApplicationsReturnsEmptyListForBlankOrNullQuery() {
+        assertThat(service.searchApplications(null)).isEmpty();
+        assertThat(service.searchApplications("")).isEmpty();
+        assertThat(service.searchApplications("   ")).isEmpty();
+    }
+
+    @Test
+    void searchApplicationsDelegatesToRepositoryWithPageCappedAtTen() {
+        PolicyRecord row = new PolicyRecord("APP-001", "ref-001");
+        when(records.findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("APP"), any(Pageable.class))).thenReturn(List.of(row));
+
+        List<PolicyRecordView> results = service.searchApplications("APP");
+
+        assertThat(results).singleElement()
+                .satisfies(v -> assertThat(v.applicationId()).isEqualTo("APP-001"));
     }
 }

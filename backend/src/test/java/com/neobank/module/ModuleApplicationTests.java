@@ -168,9 +168,197 @@ class ModuleApplicationTests {
         // You will meet this: the sidecar lets you edit the envelope before sending it.
         mvc.perform(post("/api/v1/applications")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"applicationId\":\"X\",,}"))
+                        .content("{\"applicationId\":\"X\",,...}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("malformed request body")));
+    }
+
+    @Test
+    void searchFindsRecordsOutsideTheDefaultTopTen() throws Exception {
+        // Insert 25 records in order; the first one (IT-SRCH-001) will be the oldest of this batch
+        // and must NOT appear in the capped default list, but MUST be findable via ?q=.
+        for (int i = 1; i <= 25; i++) {
+            mvc.perform(post("/api/v1/applications")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(application("IT-SRCH-%03d".formatted(i))))
+                    .andExpect(status().isAccepted());
+        }
+
+        // Default list (no query) does NOT include the first-inserted record — it is outside top 10
+        String defaultBody = mvc.perform(get("/api/v1/applications"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(defaultBody).doesNotContain("IT-SRCH-001");
+
+        // Blank ?q= returns []
+        mvc.perform(get("/api/v1/applications?q="))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+
+        // Exact ID search finds the record even though it is outside the default top 10
+        mvc.perform(get("/api/v1/applications?q=IT-SRCH-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId").value("IT-SRCH-001"));
+
+        // Partial prefix search returns at most 10 results, all matching
+        mvc.perform(get("/api/v1/applications?q=IT-SRCH-"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$", hasSize(10)));
+    }
+
+    @Test
+    void httpRequestSearchResponseHasCorrectJsonStructure() throws Exception {
+        // Ensure the HTTP response includes all required fields in camelCase
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(application("HTTP-STRUCT-TEST")))
+                .andExpect(status().isAccepted());
+
+        mvc.perform(get("/api/v1/applications?q=HTTP-STRUCT-TEST"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId").value("HTTP-STRUCT-TEST"))
+                .andExpect(jsonPath("$[0].submittedAt").exists())
+                .andExpect(jsonPath("$[0].sampled").exists())
+                .andExpect(jsonPath("$[0].reasonCount").isNumber());
+    }
+
+    @Test
+    void httpRequestSearchIsCaseInsensitive() throws Exception {
+        // Create a test record
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(application("Case-Insensitive-Test")))
+                .andExpect(status().isAccepted());
+
+        // Search with uppercase
+        mvc.perform(get("/api/v1/applications?q=CASE-INSENSITIVE-TEST"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId").value("Case-Insensitive-Test"));
+
+        // Search with lowercase
+        mvc.perform(get("/api/v1/applications?q=case-insensitive-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId").value("Case-Insensitive-Test"));
+
+        // Search with mixed case
+        mvc.perform(get("/api/v1/applications?q=CaSe-InSeNsItIvE-TeSt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void httpRequestSearchReturnsOrderedBySubmittedAtDescending() throws Exception {
+        // Insert records in order
+        String[] ids = {"SORT-FIRST", "SORT-SECOND", "SORT-THIRD"};
+        for (String id : ids) {
+            mvc.perform(post("/api/v1/applications")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(application(id)))
+                    .andExpect(status().isAccepted());
+            // Small delay to ensure different timestamps
+            Thread.sleep(10);
+        }
+
+        // Search and verify order: most recent first (DESC)
+        mvc.perform(get("/api/v1/applications?q=SORT-"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].applicationId").value("SORT-THIRD"))
+                .andExpect(jsonPath("$[1].applicationId").value("SORT-SECOND"))
+                .andExpect(jsonPath("$[2].applicationId").value("SORT-FIRST"));
+    }
+
+    @Test
+    void httpRequestSearchReturnsEmptyForNonExistentQuery() throws Exception {
+        mvc.perform(get("/api/v1/applications?q=DEFINITELY-DOES-NOT-EXIST-XYZ-123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void httpRequestDefaultListReturnsTopTenOnly() throws Exception {
+        // Insert 15 records
+        for (int i = 1; i <= 15; i++) {
+            mvc.perform(post("/api/v1/applications")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(application("TOP-TEN-TEST-%02d".formatted(i))))
+                    .andExpect(status().isAccepted());
+        }
+
+        // Default list must cap at 10
+        mvc.perform(get("/api/v1/applications"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(10)));
+    }
+
+    @Test
+    void httpRequestGetApplicationsAlwaysReturns200Status() throws Exception {
+        mvc.perform(get("/api/v1/applications"))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/applications?q="))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/applications?q=nonexistent"))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(application("STATUS-TEST")))
+                .andExpect(status().isAccepted());
+
+        mvc.perform(get("/api/v1/applications?q=STATUS-TEST"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void httpRequestCasesSearchReturnsSeedDataWithOutcomes() throws Exception {
+        // Search for seeded test cases which have outcome data
+        mvc.perform(get("/api/v1/cases?q=uc01-maria-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId").value("uc01-maria-001"))
+                .andExpect(jsonPath("$[0].outcome").value("APPROVED"));
+
+        mvc.perform(get("/api/v1/cases?q=uc01-sofia-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].applicationId").value("uc01-sofia-001"))
+                .andExpect(jsonPath("$[0].outcome").value("REJECTED"));
+    }
+
+    @Test
+    void httpRequestUrlEncodedSpacesAreHandledCorrectly() throws Exception {
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(application("SPACE-TEST-ID")))
+                .andExpect(status().isAccepted());
+
+        // Search with URL-encoded space (%20) in query
+        mvc.perform(get("/api/v1/applications?q=SPACE%20TEST"))
+                .andExpect(status().isOk());
+
+        // Search returns empty when space doesn't match (ID has no spaces)
+        mvc.perform(get("/api/v1/applications?q=SPACE%20TEST%20ID"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void httpRequestPostApplicationReturnsCorrectJsonFields() throws Exception {
+        // Verify the POST response includes all required fields
+        mvc.perform(post("/api/v1/applications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(application("HTTP-POST-JSON")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("in-progress"))
+                .andExpect(jsonPath("$.applicationId").value("HTTP-POST-JSON"))
+                .andExpect(jsonPath("$.serviceId").value("neo02"))
+                .andExpect(jsonPath("$.command").value("process-application"));
     }
 }

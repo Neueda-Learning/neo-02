@@ -7,6 +7,7 @@ import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +65,25 @@ public class ApplicationService {
     @Transactional(readOnly = true)
     public List<PolicyRecordView> findAll() {
         return records.findTop10ByOrderByCreatedAtDescApplicationIdDesc().stream()
+                .map(PolicyRecordView::of)
+                .toList();
+    }
+
+    /**
+     * UC-00 board search: find applications whose id contains {@code query} (case-insensitive),
+     * newest first, capped at 10.
+     *
+     * <p>Returns an empty list when the query is blank — the board is empty by default; the caller
+     * should only invoke this when the user has typed something.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<PolicyRecordView> searchApplications(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return List.of();
+        }
+        return records.findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
+                        query.trim(), PageRequest.of(0, 10))
+                .stream()
                 .map(PolicyRecordView::of)
                 .toList();
     }
