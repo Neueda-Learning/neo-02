@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import PolicyConfigScreen from './components/PolicyConfigScreen.jsx';
+import RejectionPatternsScreen from './components/RejectionPatternsScreen.jsx';
 import { api } from './api.js';
 
 const POLL_MS = 2000;
@@ -18,6 +19,7 @@ const HEALTH_MS = 10000;
 const SCREENS = [
   { id: 'applications', label: 'Applications' },
   { id: 'cases', label: 'Cases', hint: 'your own table', disabled: true },
+  { id: 'rejection-patterns', label: 'Rejection Patterns' },
   { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
   { id: 'settings', label: 'Policy Config' },
 ];
@@ -100,6 +102,8 @@ export default function App() {
       {screen === 'applications' && (
         <RequestsScreen requests={requests} error={error} info={info} />
       )}
+      {screen === 'settings' && <PolicyConfigScreen />}
+      {screen === 'rejection-patterns' && <RejectionPatternsScreen info={info} />}
       {screen === 'settings' && <PolicyConfigScreen />}
     </AppShell>
   );
