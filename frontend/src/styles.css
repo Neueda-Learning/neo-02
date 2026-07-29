@@ -26,6 +26,21 @@
   place-items: center;
 }
 
+.decision-layout {
+  display: block;
+}
+
+.decision-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
+  gap: var(--ds-space-5);
+  align-items: start;
+}
+
+.decision-bottom-grid > * {
+  min-width: 0;
+}
+
 .decision-reasons {
   min-height: var(--ds-control-height-sm);
 }
@@ -33,6 +48,271 @@
 .decision-no-reason {
   color: var(--ds-color-text-muted);
   font-size: var(--ds-text-sm);
+}
+
+.decision-panel .ds-card__title {
+  font-size: var(--ds-text-lg);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.decision-overview__reason-icon,
+.decision-rule-row__callout-icon,
+.decision-empty-state__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.decision-applicant-field,
+.decision-summary-stat,
+.decision-empty-state {
+  display: flex;
+  gap: var(--ds-space-3);
+  align-items: flex-start;
+  padding: var(--ds-space-3);
+  border: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface);
+}
+
+.decision-summary-grid {
+  align-items: stretch;
+}
+
+.decision-summary-stat__icon,
+.decision-applicant-field__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--ds-color-surface-sunken);
+  flex: 0 0 auto;
+}
+
+.decision-summary-stat__value {
+  display: block;
+  margin-top: var(--ds-space-1);
+}
+
+.decision-applicant-note {
+  margin-top: var(--ds-space-4);
+}
+
+.decision-empty-state p,
+.decision-rule-row__callout p,
+.decision-rule-row__meta-line {
+  margin: var(--ds-space-1) 0 0;
+  color: var(--ds-color-text-muted);
+}
+
+.decision-rule-list {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  border: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  border-radius: var(--ds-radius-lg);
+  overflow: hidden;
+}
+
+.decision-rule-row {
+  padding: var(--ds-space-4);
+  background: var(--ds-color-surface);
+}
+
+.decision-rule-row__rail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 2.6rem;
+  min-height: 2rem;
+  flex: 0 0 2.6rem;
+}
+
+.decision-rule-row__rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  margin-right: var(--ds-space-2);
+}
+
+.decision-rule-row + .decision-rule-row {
+  border-top: var(--ds-border-width) solid var(--ds-color-border-subtle);
+}
+
+.decision-rule-row__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  font-size: var(--ds-text-sm);
+  font-weight: 700;
+  background: var(--ds-color-surface-sunken);
+  color: var(--ds-color-text-muted);
+}
+
+.decision-rule-row__index--negative {
+  background: color-mix(in srgb, var(--ds-color-negative) 14%, white);
+  color: var(--ds-color-negative);
+}
+
+.decision-rule-row__index--positive {
+  background: color-mix(in srgb, var(--ds-color-positive) 14%, white);
+  color: var(--ds-color-positive);
+}
+
+.decision-rule-row__index--warning {
+  background: color-mix(in srgb, var(--ds-color-warning) 16%, white);
+  color: var(--ds-color-warning);
+}
+
+.decision-rule-row__index--info {
+  background: color-mix(in srgb, var(--ds-color-info) 12%, white);
+  color: var(--ds-color-info);
+}
+
+.decision-rule-row__summary {
+  min-width: 0;
+}
+
+.decision-rule-row__main {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr) auto;
+  gap: var(--ds-space-4);
+  align-items: stretch;
+}
+
+.decision-rule-row__head {
+  min-width: 0;
+  min-height: 1.5rem;
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr);
+  column-gap: var(--ds-space-3);
+  align-items: center;
+}
+
+.decision-rule-row__head strong {
+  min-width: 0;
+}
+
+.decision-rule-row__meta-line span {
+  color: var(--ds-color-text-muted);
+}
+
+.decision-rule-row__meta-line {
+  padding-left: calc(2.6rem + var(--ds-space-3));
+}
+
+.decision-rule-row__meta-line strong {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.decision-rule-row__callout {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  min-height: 100%;
+  padding: var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface-sunken);
+}
+
+.decision-rule-row__summary,
+.decision-rule-row__callout {
+  align-self: stretch;
+}
+
+.decision-rule-row__callout--negative {
+  background: color-mix(in srgb, var(--ds-color-negative) 6%, white);
+}
+
+.decision-rule-row__callout--positive {
+  background: color-mix(in srgb, var(--ds-color-positive) 7%, white);
+}
+
+.decision-rule-row__callout--warning {
+  background: color-mix(in srgb, var(--ds-color-warning) 10%, white);
+}
+
+.decision-rule-row__callout--info {
+  background: color-mix(in srgb, var(--ds-color-info) 7%, white);
+}
+
+.decision-rule-row__callout p {
+  flex: 1 1 auto;
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.decision-rule-row__status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.decision-rule-row__status .ds-badge {
+  white-space: nowrap;
+}
+
+.decision-empty-state p {
+  margin: var(--ds-space-1) 0 0;
+  color: var(--ds-color-text-muted);
+}
+
+.decision-empty-state {
+  background: color-mix(in srgb, var(--ds-color-info) 5%, white);
+}
+
+.decision-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.decision-icon--negative {
+  color: var(--ds-color-negative);
+}
+
+.decision-icon--positive {
+  color: var(--ds-color-positive);
+}
+
+.decision-icon--warning {
+  color: var(--ds-color-warning);
+}
+
+.decision-icon--info {
+  color: var(--ds-color-info);
+}
+
+.decision-icon--neutral {
+  color: var(--ds-color-text);
+}
+
+@media (max-width: 1180px) {
+  .decision-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+
+  .decision-rule-row__main {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-rule-row__status {
+    justify-content: flex-start;
+  }
 }
 
 /* Stacked, not side-by-side: the bar chart's label column (18rem) needs more
