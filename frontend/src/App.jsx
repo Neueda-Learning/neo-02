@@ -57,7 +57,6 @@ export default function App() {
     { id: 'patterns', label: 'Rejection Patterns' },
     { id: 'referrals', label: 'Referral Queue', hint: 'human review' },
     { id: 'cases', label: 'Search cases' },
-    { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
     { id: 'settings', label: 'Policy Config' },
   ];
 
