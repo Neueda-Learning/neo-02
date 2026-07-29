@@ -32,13 +32,23 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/health'),
   info: () => request('/info'),
-  listApplications: async (page = 0) => {
-    const { body, headers } = await fetchJson(`/api/v1/applications?page=${page}`);
+  listApplications: async (page = 0, status = 'All') => {
+    const statusParam = status === 'All' ? '' : `&status=${encodeURIComponent(status)}`;
+    const { body, headers } = await fetchJson(
+      `/api/v1/applications?page=${page}${statusParam}`
+    );
     return {
       results: body ?? [],
       page: Number(headers.get('X-Page') ?? page),
       more: headers.get('X-More-Results') === 'true',
       total: Number(headers.get('X-Total-Count') ?? body?.length ?? 0),
+      allTotal: Number(headers.get('X-All-Count') ?? body?.length ?? 0),
+      counts: {
+        IN_PROGRESS: Number(headers.get('X-Status-In-Progress-Count') ?? 0),
+        APPROVED: Number(headers.get('X-Status-Approved-Count') ?? 0),
+        REJECTED: Number(headers.get('X-Status-Rejected-Count') ?? 0),
+        REFERRED: Number(headers.get('X-Status-Referred-Count') ?? 0),
+      },
     };
   },
   searchApplications: (query) =>

@@ -17,6 +17,16 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
 
     Page<PolicyRecord> findAllByOrderByCreatedAtDescApplicationIdDesc(Pageable pageable);
 
+    Page<PolicyRecord> findByOutcomeOrderByCreatedAtDescApplicationIdDesc(
+            PolicyOutcome outcome, Pageable pageable);
+
+    Page<PolicyRecord> findByOutcomeIsNullAndProcessingStatusOrderByCreatedAtDescApplicationIdDesc(
+            String processingStatus, Pageable pageable);
+
+    long countByOutcome(PolicyOutcome outcome);
+
+    long countByOutcomeIsNullAndProcessingStatus(String processingStatus);
+
     List<PolicyRecord> findBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(
             Instant fromInclusive,
             Instant toExclusive);

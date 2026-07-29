@@ -15,8 +15,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
+import com.neobank.module.service.ApplicationService.ApplicationBoardPage;
+import com.neobank.module.service.ApplicationService.ApplicationBoardStatus;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,14 +55,28 @@ class ApplicationControllerTest {
                 "SIM-11", "REFERRED", "pol-1234567890", submittedAt, submittedAt,
                 "REFERRED", true, 1);
         PageRequest pageRequest = PageRequest.of(1, 10);
-        when(applications.findAll(1, 10))
-                .thenReturn(new PageImpl<>(List.of(row), pageRequest, 25));
+        when(applications.findAll(1, 10, ApplicationBoardStatus.REFERRED))
+                .thenReturn(new ApplicationBoardPage(
+                        new PageImpl<>(List.of(row), pageRequest, 25),
+                        42,
+                        Map.of(
+                                ApplicationBoardStatus.IN_PROGRESS, 2L,
+                                ApplicationBoardStatus.APPROVED, 10L,
+                                ApplicationBoardStatus.REJECTED, 5L,
+                                ApplicationBoardStatus.REFERRED, 25L)));
 
-        mvc.perform(get("/api/v1/applications").queryParam("page", "1"))
+        mvc.perform(get("/api/v1/applications")
+                        .queryParam("page", "1")
+                        .queryParam("status", "REFERRED"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Page", "1"))
                 .andExpect(header().string("X-More-Results", "true"))
                 .andExpect(header().string("X-Total-Count", "25"))
+                .andExpect(header().string("X-All-Count", "42"))
+                .andExpect(header().string("X-Status-In-Progress-Count", "2"))
+                .andExpect(header().string("X-Status-Approved-Count", "10"))
+                .andExpect(header().string("X-Status-Rejected-Count", "5"))
+                .andExpect(header().string("X-Status-Referred-Count", "25"))
                 .andExpect(jsonPath("$[0].applicationId").value("SIM-11"))
                 .andExpect(jsonPath("$[0].status").value("REFERRED"));
     }

@@ -13,7 +13,9 @@ import com.neobank.module.model.PolicyRecord;
 import com.neobank.module.repository.PolicyConfigReader;
 import com.neobank.module.repository.PolicyRecordRepository;
 import com.neobank.module.service.PolicyDecisionWriter.DecisionContext;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
@@ -153,12 +155,45 @@ public class ApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<PolicyRecordView> findAll(int page, int size) {
+    public ApplicationBoardPage findAll(int page, int size, ApplicationBoardStatus status) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(1, Math.min(size, 10));
-        return records.findAllByOrderByCreatedAtDescApplicationIdDesc(
-                        PageRequest.of(safePage, safeSize))
-                .map(PolicyRecordView::of);
+        PageRequest pageable = PageRequest.of(safePage, safeSize);
+        Page<PolicyRecord> rows = switch (status) {
+            case IN_PROGRESS ->
+                    records.findByOutcomeIsNullAndProcessingStatusOrderByCreatedAtDescApplicationIdDesc(
+                            "IN_PROGRESS", pageable);
+            case APPROVED, REJECTED, REFERRED ->
+                    records.findByOutcomeOrderByCreatedAtDescApplicationIdDesc(
+                            PolicyOutcome.valueOf(status.name()), pageable);
+            case null -> records.findAllByOrderByCreatedAtDescApplicationIdDesc(pageable);
+        };
+
+        Map<ApplicationBoardStatus, Long> counts = new LinkedHashMap<>();
+        counts.put(ApplicationBoardStatus.IN_PROGRESS,
+                records.countByOutcomeIsNullAndProcessingStatus("IN_PROGRESS"));
+        counts.put(ApplicationBoardStatus.APPROVED,
+                records.countByOutcome(PolicyOutcome.APPROVED));
+        counts.put(ApplicationBoardStatus.REJECTED,
+                records.countByOutcome(PolicyOutcome.REJECTED));
+        counts.put(ApplicationBoardStatus.REFERRED,
+                records.countByOutcome(PolicyOutcome.REFERRED));
+
+        return new ApplicationBoardPage(
+                rows.map(PolicyRecordView::of), records.count(), Map.copyOf(counts));
+    }
+
+    public enum ApplicationBoardStatus {
+        IN_PROGRESS,
+        APPROVED,
+        REJECTED,
+        REFERRED
+    }
+
+    public record ApplicationBoardPage(
+            Page<PolicyRecordView> rows,
+            long allCount,
+            Map<ApplicationBoardStatus, Long> statusCounts) {
     }
 
     /**

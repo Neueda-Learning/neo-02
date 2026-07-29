@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
 import CasesScreen from './components/CasesScreen.jsx';
 import DecisionDetailScreen from './components/DecisionDetailScreen.jsx';
@@ -17,28 +17,40 @@ export default function App() {
   const [detailReturnScreen, setDetailReturnScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
   const [applicationPage, setApplicationPage] = useState(0);
+  const [applicationFilter, setApplicationFilter] = useState('All');
   const [applicationMore, setApplicationMore] = useState(false);
   const [applicationTotal, setApplicationTotal] = useState(0);
+  const [applicationAllTotal, setApplicationAllTotal] = useState(0);
+  const [applicationCounts, setApplicationCounts] = useState({});
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
   const [info, setInfo] = useState(null);
+  const applicationRequestVersion = useRef(0);
 
   const reload = useCallback(async () => {
+    const requestVersion = ++applicationRequestVersion.current;
     try {
-      const result = await api.listApplications(applicationPage);
+      const result = await api.listApplications(applicationPage, applicationFilter);
+      if (requestVersion !== applicationRequestVersion.current) return;
       setRequests(result.results);
       setApplicationMore(result.more);
       setApplicationTotal(result.total);
+      setApplicationAllTotal(result.allTotal);
+      setApplicationCounts(result.counts);
       setError(null);
     } catch (e) {
+      if (requestVersion !== applicationRequestVersion.current) return;
       setError(e.message);
     }
-  }, [applicationPage]);
+  }, [applicationFilter, applicationPage]);
 
   useEffect(() => {
     reload();
     const id = setInterval(reload, POLL_MS);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      applicationRequestVersion.current += 1;
+    };
   }, [reload]);
 
   const refreshHealth = useCallback(async () => {
@@ -112,7 +124,14 @@ export default function App() {
           page={applicationPage}
           more={applicationMore}
           total={applicationTotal}
+          allTotal={applicationAllTotal}
+          counts={applicationCounts}
+          filter={applicationFilter}
           onPageChange={setApplicationPage}
+          onFilterChange={(nextFilter) => {
+            setApplicationPage(0);
+            setApplicationFilter(nextFilter);
+          }}
           onOpenCase={(row) => openCase(row, 'applications')}
         />
       )}
