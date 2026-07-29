@@ -38,6 +38,11 @@ export const api = {
       : request('/api/v1/applications'),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   getApplicant: (id) => request(`/cases/${encodeURIComponent(id)}/applicant`),
+  overrideCase: (id, body) =>
+    request(`/cases/${encodeURIComponent(id)}/override`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   listConfigVersions: () => request('/config/versions'),
   searchCases: async (query, limit = 10) => {
     const { body, headers } = await fetchJson(

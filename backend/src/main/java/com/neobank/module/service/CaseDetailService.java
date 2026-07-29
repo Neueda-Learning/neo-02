@@ -1,6 +1,8 @@
 package com.neobank.module.service;
 
 import com.neobank.module.dto.CaseDetailView;
+import com.neobank.module.dto.OverrideLogView;
+import com.neobank.module.repository.OverrideLogRepository;
 import com.neobank.module.repository.PolicyRecordRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,15 +12,24 @@ import org.springframework.transaction.annotation.Transactional;
 public class CaseDetailService {
 
     private final PolicyRecordRepository records;
+    private final OverrideLogRepository overrides;
 
-    public CaseDetailService(PolicyRecordRepository records) {
+    public CaseDetailService(
+            PolicyRecordRepository records,
+            OverrideLogRepository overrides) {
         this.records = records;
+        this.overrides = overrides;
     }
 
     @Transactional(readOnly = true)
     public CaseDetailView find(String applicationId) {
         return records.findById(applicationId)
-                .map(CaseDetailView::of)
+                .map(record -> CaseDetailView.of(
+                        record,
+                        overrides.findByApplicationIdOrderByOverriddenAtAscIdAsc(applicationId)
+                                .stream()
+                                .map(OverrideLogView::of)
+                                .toList()))
                 .orElseThrow(() -> new CaseNotFoundException(applicationId));
     }
 }

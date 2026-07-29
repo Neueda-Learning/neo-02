@@ -2,21 +2,27 @@ package com.neobank.module.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.neobank.module.dto.CaseDetailView;
 import com.neobank.module.dto.ApplicantView;
+import com.neobank.module.dto.CaseDetailView;
+import com.neobank.module.dto.OverrideCaseRequest;
+import com.neobank.module.model.PolicyOutcome;
 import com.neobank.module.model.RuleResult;
 import com.neobank.module.service.ApplicantService;
 import com.neobank.module.service.ApplicantUnavailableException;
+import com.neobank.module.service.CaseConflictException;
 import com.neobank.module.service.CaseDetailService;
 import com.neobank.module.service.CaseNotFoundException;
+import com.neobank.module.service.OverrideCaseService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(CaseController.class)
@@ -30,6 +36,9 @@ class CaseControllerTest {
 
     @MockBean
     private ApplicantService applicants;
+
+    @MockBean
+    private OverrideCaseService overrides;
 
     @Test
     void returnsTheStoredDecisionAndFourRuleSections() throws Exception {
@@ -110,6 +119,90 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("not-ours")));
+    }
+
+    @Test
+    void overridesACaseAndReturnsTheUpdatedDetail() throws Exception {
+        OverrideCaseRequest request = new OverrideCaseRequest(
+                PolicyOutcome.APPROVED,
+                "registry entry stale",
+                "b.dimovski");
+        when(overrides.override("app-1242", request)).thenReturn(new CaseDetailView(
+                "APPROVED",
+                "REJECTED",
+                "pol-000216",
+                1,
+                List.of(),
+                "b.dimovski",
+                java.time.Instant.parse("2026-07-29T02:00:00Z"),
+                "registry entry stale",
+                List.of()));
+
+        mvc.perform(post("/cases/app-1242/override")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOutcome": "APPROVED",
+                                  "reason": "registry entry stale",
+                                  "operator": "b.dimovski"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("APPROVED"))
+                .andExpect(jsonPath("$.machineOutcome").value("REJECTED"))
+                .andExpect(jsonPath("$.decidedBy").value("b.dimovski"))
+                .andExpect(jsonPath("$.decisionReason").value("registry entry stale"));
+    }
+
+    @Test
+    void overrideRequiresReasonAndOperator() throws Exception {
+        mvc.perform(post("/cases/app-1242/override")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"newOutcome": "APPROVED", "reason": " ", "operator": ""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.length()").value(2));
+    }
+
+    @Test
+    void overrideRejectsAnUnknownOutcome() throws Exception {
+        mvc.perform(post("/cases/app-1242/override")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOutcome": "MAYBE",
+                                  "reason": "test",
+                                  "operator": "b.dimovski"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("malformed request body")));
+    }
+
+    @Test
+    void overrideConflictReturnsJson409() throws Exception {
+        when(overrides.override(
+                "app-1242",
+                new OverrideCaseRequest(
+                        PolicyOutcome.APPROVED,
+                        "different reason",
+                        "b.dimovski")))
+                .thenThrow(new CaseConflictException("stale override"));
+
+        mvc.perform(post("/cases/app-1242/override")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOutcome": "APPROVED",
+                                  "reason": "different reason",
+                                  "operator": "b.dimovski"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("stale override"));
     }
 
     private static ApplicantView applicant() {

@@ -51,8 +51,20 @@ public class PolicyRecord {
     @Column(name = "rule_results", columnDefinition = "json")
     private List<RuleResult> ruleResults;
 
+    @Column(name = "claimed_by", length = 100)
+    private String claimedBy;
+
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
+
+    @Column(name = "decided_by", length = 100)
+    private String decidedBy;
+
     @Column(name = "decided_at")
     private Instant decidedAt;
+
+    @Column(name = "decision_reason", length = 1000)
+    private String decisionReason;
 
     @Column(name = "submitted_at", nullable = false)
     private Instant submittedAt;
@@ -134,6 +146,26 @@ public class PolicyRecord {
         return decidedAt;
     }
 
+    public String getClaimedBy() {
+        return claimedBy;
+    }
+
+    public Instant getClaimedAt() {
+        return claimedAt;
+    }
+
+    public String getDecidedBy() {
+        return decidedBy;
+    }
+
+    public String getDecisionReason() {
+        return decisionReason;
+    }
+
+    public long getLockVersion() {
+        return lockVersion;
+    }
+
     public boolean isDecided() {
         return "DECIDED".equals(processingStatus);
     }
@@ -152,5 +184,23 @@ public class PolicyRecord {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    /**
+     * Applies a human override while preserving every piece of machine evidence.
+     */
+    public void overrideOutcome(
+            PolicyOutcome newOutcome,
+            String operator,
+            String reason,
+            Instant overriddenAt) {
+        this.outcome = newOutcome;
+        this.decidedBy = operator;
+        this.decidedAt = overriddenAt;
+        this.decisionReason = reason;
+        if (newOutcome == PolicyOutcome.REFERRED) {
+            this.claimedBy = null;
+            this.claimedAt = null;
+        }
     }
 }

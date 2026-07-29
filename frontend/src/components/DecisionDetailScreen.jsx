@@ -5,13 +5,20 @@ import {
   Button,
   Caption,
   Card,
+  Field,
+  FormActions,
   Grid,
   KeyValue,
+  Modal,
   PageHeader,
+  Select,
   Split,
   Spinner,
   Stack,
   Tag,
+  Textarea,
+  TextInput,
+  Timeline,
 } from '../design-system';
 import { api } from '../api.js';
 import { statusTone } from '../status.js';
@@ -28,6 +35,8 @@ const RULE_LABELS = {
 export default function DecisionDetailScreen({ applicationId, onBack }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideNotice, setOverrideNotice] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -48,6 +57,8 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
 
     setDetail(null);
     setError(null);
+    setOverrideOpen(false);
+    setOverrideNotice(null);
     load();
     return () => {
       active = false;
@@ -86,6 +97,14 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
   }
 
   const decided = Boolean(detail.outcome);
+  const applyOverride = async (command) => {
+    const updated = await api.overrideCase(applicationId, command);
+    setDetail(updated);
+    setOverrideNotice(
+      `Decision changed to ${updated.outcome}. The audit entry is permanent and the orchestrator status update was issued.`
+    );
+  };
+
   return (
     <>
       <PageHeader
@@ -97,8 +116,23 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         }
         lede="stored decision and rule evidence"
         meta={`${applicationId} | ${detail.reference}`}
-        actions={<Button onClick={onBack}>Back to applications</Button>}
+        actions={
+          <Stack row gap={2}>
+            {decided && (
+              <Button variant="primary" onClick={() => setOverrideOpen(true)}>
+                Override decision…
+              </Button>
+            )}
+            <Button onClick={onBack}>Back to applications</Button>
+          </Stack>
+        }
       />
+
+      {overrideNotice && (
+        <Alert tone="positive" title="Override recorded">
+          {overrideNotice}
+        </Alert>
+      )}
 
       {!decided && (
         <Alert tone="info" title="Decision in progress">
@@ -136,6 +170,18 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
             </Grid>
           </Card>
 
+          {detail.decidedBy && (
+            <Card title="Current human decision" tone="info">
+              <KeyValue
+                items={[
+                  ['Operator', detail.decidedBy],
+                  ['Reason', detail.decisionReason],
+                  ['Decided at', formatTimestamp(detail.decidedAt)],
+                ]}
+              />
+            </Card>
+          )}
+
           {detail.ruleResults?.length > 0 && (
             <Grid cols="auto" min={280}>
               {detail.ruleResults.map((rule) => (
@@ -143,9 +189,175 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
               ))}
             </Grid>
           )}
+
+          {detail.overrides?.length > 0 && (
+            <Card
+              title="Override history"
+              subtitle="append-only audit trail — oldest first"
+            >
+              <Timeline
+                items={detail.overrides.map((entry) => ({
+                  id: entry.id,
+                  title: `${entry.oldOutcome} → ${entry.newOutcome}`,
+                  detail: `${entry.reason} · ${entry.operator}`,
+                  when: formatTimestamp(entry.overriddenAt),
+                  tone: statusTone(entry.newOutcome),
+                }))}
+              />
+            </Card>
+          )}
         </Stack>
       </Split>
+
+      <OverrideDecisionModal
+        open={overrideOpen}
+        currentOutcome={detail.outcome}
+        onClose={() => setOverrideOpen(false)}
+        onSubmit={applyOverride}
+      />
     </>
+  );
+}
+
+function OverrideDecisionModal({ open, currentOutcome, onClose, onSubmit }) {
+  const [newOutcome, setNewOutcome] = useState('');
+  const [reason, setReason] = useState('');
+  const [operator, setOperator] = useState('');
+  const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const outcomes = ['APPROVED', 'REJECTED', 'REFERRED'].filter(
+    (outcome) => outcome !== currentOutcome
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setNewOutcome(outcomes[0] ?? '');
+    setReason('');
+    setOperator('');
+    setErrors({});
+    setSubmitError(null);
+    setBusy(false);
+  }, [open, currentOutcome]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const nextErrors = {};
+    if (!newOutcome) nextErrors.newOutcome = 'Choose a new outcome.';
+    if (!reason.trim()) nextErrors.reason = 'A reason is required for the permanent audit trail.';
+    if (!operator.trim()) nextErrors.operator = 'Operator is required.';
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setBusy(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        newOutcome,
+        reason: reason.trim(),
+        operator: operator.trim(),
+      });
+      onClose();
+    } catch (nextError) {
+      setSubmitError(nextError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="Override decision"
+      onClose={busy ? undefined : onClose}
+      footer={
+        <>
+          <Button
+            variant="primary"
+            type="submit"
+            form="override-decision-form"
+            busy={busy}
+            busyLabel="Recording override…"
+          >
+            Confirm override
+          </Button>
+          <Button onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+        </>
+      }
+    >
+      <form id="override-decision-form" onSubmit={submit}>
+        <Stack gap={5}>
+          <Alert tone="warning" title={`Current outcome: ${currentOutcome}`}>
+            This changes the effective decision, writes an immutable audit entry, and sends the
+            orchestrator a status update. The original machine outcome and rule evidence remain
+            unchanged.
+          </Alert>
+
+          {submitError && (
+            <Alert tone="negative" title="Override could not be recorded">
+              {submitError.message}
+            </Alert>
+          )}
+
+          <Field label="New outcome" required error={errors.newOutcome}>
+            {({ id, invalid, describedBy }) => (
+              <Select
+                id={id}
+                value={newOutcome}
+                invalid={invalid}
+                aria-describedby={describedBy}
+                onChange={(event) => setNewOutcome(event.target.value)}
+                options={outcomes}
+              />
+            )}
+          </Field>
+
+          <Field
+            label="Reason"
+            required
+            hint="Explain why the stored decision is wrong. This text is retained permanently."
+            error={errors.reason}
+          >
+            {({ id, invalid, describedBy }) => (
+              <Textarea
+                id={id}
+                value={reason}
+                maxLength={1000}
+                invalid={invalid}
+                aria-describedby={describedBy}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="e.g. Registry entry stale — card closed in May"
+              />
+            )}
+          </Field>
+
+          <Field label="Operator" required error={errors.operator}>
+            {({ id, invalid, describedBy }) => (
+              <TextInput
+                id={id}
+                value={operator}
+                maxLength={100}
+                invalid={invalid}
+                aria-describedby={describedBy}
+                onChange={(event) => setOperator(event.target.value)}
+                placeholder="e.g. b.dimovski"
+                autoComplete="username"
+              />
+            )}
+          </Field>
+
+          <FormActions>
+            <Caption>
+              Repeating this exact command is safe: it will not create another audit entry or
+              callback.
+            </Caption>
+          </FormActions>
+        </Stack>
+      </form>
+    </Modal>
   );
 }
 
@@ -288,4 +500,13 @@ function valueOrDash(value) {
 
 function listOrDash(values) {
   return values?.length ? values.join(', ') : '—';
+}
+
+function formatTimestamp(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(value));
 }

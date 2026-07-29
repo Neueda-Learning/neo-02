@@ -100,7 +100,9 @@ class ModuleApplicationTests {
         mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/applications'].post").exists())
-                .andExpect(jsonPath("$.paths['/cases/{applicationId}'].get").exists());
+                .andExpect(jsonPath("$.paths['/cases/{applicationId}'].get").exists())
+                .andExpect(jsonPath(
+                        "$.paths['/cases/{applicationId}/override'].post").exists());
     }
 
     @Test
