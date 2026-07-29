@@ -178,6 +178,9 @@ is cleared from its page.
 ## The contract
 
 Full detail in [`api-contract.md`](https://github.com/Neueda-Learning/neo-00/blob/main/api-contract.md).
+Neo-02's current implementation and Orchestrator integration details are documented in
+[`docs/orchestrator-api-integration.md`](docs/orchestrator-api-integration.md) (English) and
+[`docs/orchestrator-api-integration.zh-CN.md`](docs/orchestrator-api-integration.zh-CN.md) (中文).
 In short:
 
 **Two endpoints, and only the first is the contract.**
