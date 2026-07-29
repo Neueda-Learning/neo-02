@@ -18,7 +18,7 @@ import { time } from '../status.js';
  * Operator board for searching applications by ID or applicant name. Results show
  * outcome, sampling status, and reason count extracted from policy evaluation.
  */
-export default function CasesScreen({ info }) {
+export default function CasesScreen({ info, onOpenCase }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [more, setMore] = useState(false);
@@ -218,7 +218,9 @@ export default function CasesScreen({ info }) {
         <DataTable
           columns={columns}
           rows={results}
+          rowKey={(row) => row.applicationId}
           total={more ? results.length + 1 : results.length}
+          onRowClick={onOpenCase}
           footnote="newest first"
         />
       )}

@@ -13,6 +13,7 @@ const HEALTH_MS = 10000;
 export default function App() {
   const [screen, setScreen] = useState('applications');
   const [selectedCaseId, setSelectedCaseId] = useState(null);
+  const [detailReturnScreen, setDetailReturnScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
@@ -54,18 +55,13 @@ export default function App() {
     { id: 'applications', label: 'Applications' },
     { id: 'patterns', label: 'Rejection Patterns' },
     { id: 'cases', label: 'Search cases' },
-    {
-      id: 'decision',
-      label: 'Decision detail',
-      hint: selectedCaseId ?? 'select an application',
-      disabled: !selectedCaseId,
-    },
     { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
     { id: 'settings', label: 'Policy Config' },
   ];
 
-  const openCase = (row) => {
+  const openCase = (row, returnScreen) => {
     setSelectedCaseId(row.applicationId);
+    setDetailReturnScreen(returnScreen);
     setScreen('decision');
   };
 
@@ -78,7 +74,11 @@ export default function App() {
             product={info?.service ?? 'Module'}
             meta={info ? `${info.serviceId} | ${info.domain}` : undefined}
           />
-          <SideNav items={screens} active={screen} onSelect={setScreen} />
+          <SideNav
+            items={screens}
+            active={screen === 'decision' ? detailReturnScreen : screen}
+            onSelect={setScreen}
+          />
           <div className="app-side-status">
             <StatusPill tone={up ? 'positive' : 'negative'}>{up ? 'Up' : 'Down'}</StatusPill>
             <Button
@@ -97,14 +97,24 @@ export default function App() {
       footer="Customer Policy | applications arrive from the orchestrator"
     >
       {screen === 'applications' && (
-        <RequestsScreen requests={requests} error={error} info={info} onOpenCase={openCase} />
+        <RequestsScreen
+          requests={requests}
+          error={error}
+          info={info}
+          onOpenCase={(row) => openCase(row, 'applications')}
+        />
       )}
       {screen === 'patterns' && <RejectionPatternsScreen />}
-      {screen === 'cases' && <CasesScreen info={info} />}
+      {screen === 'cases' && (
+        <CasesScreen info={info} onOpenCase={(row) => openCase(row, 'cases')} />
+      )}
       {screen === 'decision' && selectedCaseId && (
         <DecisionDetailScreen
           applicationId={selectedCaseId}
-          onBack={() => setScreen('applications')}
+          backLabel={
+            detailReturnScreen === 'cases' ? 'Back to search cases' : 'Back to applications'
+          }
+          onBack={() => setScreen(detailReturnScreen)}
         />
       )}
       {screen === 'settings' && <PolicyConfigScreen />}
