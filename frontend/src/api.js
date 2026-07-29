@@ -1,40 +1,48 @@
-// Thin fetch wrapper. Base is empty so paths are same-origin (nginx proxies in the
-// container, Vite proxies in dev). Override with VITE_API_BASE if you must.
-//
-// Everything the UI calls goes through here on purpose: in the deployed stack the whole
-// app is served under a path prefix (/neo-02) and VITE_API_BASE is how every URL
-// picks it up. A raw fetch('/api/...') inside a component works on your laptop and 404s
-// on the load balancer.
+// Thin fetch wrapper. Vite/nginx proxy these same-origin paths in dev and deployment.
 const BASE = import.meta.env.VITE_API_BASE || '';
 
-async function request(path, options = {}) {
+async function fetchJson(path, options = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
+    let details = null;
     try {
-      const body = await res.json();
-      if (body.message) message = body.message;
+      details = await res.json();
+      if (details.message) message = details.message;
     } catch {
-      /* non-JSON error body */
+      // Non-JSON error body.
     }
     const error = new Error(message);
     error.status = res.status;
+    error.details = details;
     throw error;
   }
-  if (res.status === 204) return null;
-  return res.json();
+  const body = res.status === 204 ? null : await res.json();
+  return { body, headers: res.headers };
 }
 
-// This UI only ever READS. Applications arrive from the orchestrator — the real one, or the
-// sidecar playing it at http://localhost:9000 — never from a button in here. That is the
-// contract: your module is called, it does not call itself.
+async function request(path, options = {}) {
+  const { body } = await fetchJson(path, options);
+  return body;
+}
+
 export const api = {
   health: () => request('/health'),
   info: () => request('/info'),
-  listApplications: () => request('/api/v1/applications'),
+  listApplications: (query) =>
+    query != null
+      ? request(`/api/v1/applications?q=${encodeURIComponent(query)}`)
+      : request('/api/v1/applications'),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   listConfigVersions: () => request('/config/versions'),
+  searchCases: async (query, limit = 10) => {
+    const { body, headers } = await fetchJson(
+      `/api/v1/cases?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+    return { results: body ?? [], more: headers.get('X-More-Results') === 'true' };
+  },
+  getApplicant: (id) => request(`/api/v1/cases/${encodeURIComponent(id)}/applicant`),
 };
