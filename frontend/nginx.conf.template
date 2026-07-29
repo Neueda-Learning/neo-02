@@ -37,6 +37,15 @@ server {
     proxy_pass http://$api_backend:8080$uri$is_args$args;
   }
 
+  # The queue collection endpoint is /cases with no trailing slash. Keep an exact
+  # match for it: nginx otherwise redirects /cases to /cases/ before proxying and,
+  # behind Docker's 5173:80 port mapping, that absolute redirect loses port 5173.
+  location = ${BASE_PATH}/cases {
+    set $cases_backend ${BACKEND_HOST};
+    rewrite ^${BASE_PATH}(/cases)$ $1 break;
+    proxy_pass http://$cases_backend:8080$uri$is_args$args;
+  }
+
   location ^~ ${BASE_PATH}/cases/ {
     set $cases_backend ${BACKEND_HOST};
     rewrite ^${BASE_PATH}(/cases/.*)$ $1 break;

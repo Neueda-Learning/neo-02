@@ -2,10 +2,18 @@
 const BASE = import.meta.env.VITE_API_BASE || '';
 
 async function fetchJson(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+  } catch (cause) {
+    const error = new Error('The service is temporarily unreachable.');
+    error.status = 0;
+    error.cause = cause;
+    throw error;
+  }
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     let details = null;
@@ -32,10 +40,27 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/health'),
   info: () => request('/info'),
-  listApplications: (query) =>
-    query != null
-      ? request(`/api/v1/applications?q=${encodeURIComponent(query)}`)
-      : request('/api/v1/applications'),
+  listApplications: async (page = 0, status = 'All') => {
+    const statusParam = status === 'All' ? '' : `&status=${encodeURIComponent(status)}`;
+    const { body, headers } = await fetchJson(
+      `/api/v1/applications?page=${page}${statusParam}`
+    );
+    return {
+      results: body ?? [],
+      page: Number(headers.get('X-Page') ?? page),
+      more: headers.get('X-More-Results') === 'true',
+      total: Number(headers.get('X-Total-Count') ?? body?.length ?? 0),
+      allTotal: Number(headers.get('X-All-Count') ?? body?.length ?? 0),
+      counts: {
+        IN_PROGRESS: Number(headers.get('X-Status-In-Progress-Count') ?? 0),
+        APPROVED: Number(headers.get('X-Status-Approved-Count') ?? 0),
+        REJECTED: Number(headers.get('X-Status-Rejected-Count') ?? 0),
+        REFERRED: Number(headers.get('X-Status-Referred-Count') ?? 0),
+      },
+    };
+  },
+  searchApplications: (query) =>
+    request(`/api/v1/applications?q=${encodeURIComponent(query)}`),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   getCaseApplicant: (id) => request(`/cases/${encodeURIComponent(id)}/applicant`),
   listConfigVersions: () => request('/config/versions'),
@@ -53,7 +78,7 @@ export const api = {
     return { results: body ?? [], more: headers.get('X-More-Results') === 'true' };
   },
   getApplicant: (id) => request(`/api/v1/cases/${encodeURIComponent(id)}/applicant`),
-  listReferrals: () => request('/cases?outcome=REFERRED&unclaimed-first=true'),
+  listReferrals: () => request('/api/v1/referrals'),
   claimReferral: (id, operator) =>
     request(`/cases/${encodeURIComponent(id)}/claim`, {
       method: 'POST',

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Badge,
+  Button,
   ChipGroup,
   DataTable,
   EmptyState,
@@ -22,13 +23,25 @@ const FILTERS = ['All', ...STATUSES];
  * UC00's durable intake board. A row appears as IN_PROGRESS as soon as the request commits.
  *
  * The board follows the platform shape (design-system/DESIGN.md § "Board"): a header stating the
- * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
- * DataTable — no screen re-implements them.
+ * screen's rules, a toolbar that narrows, and a paged table. DataTable keeps each page capped at
+ * 10 rows; Previous/Next moves through the full durable intake board.
  */
-export default function RequestsScreen({ requests, error, info, onOpenCase }) {
+export default function RequestsScreen({
+  requests,
+  error,
+  info,
+  page,
+  more,
+  total,
+  allTotal,
+  counts,
+  filter,
+  onPageChange,
+  onFilterChange,
+  onOpenCase,
+}) {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('All');
-  // null = not yet searched (show polled top-10); [] or rows = backend search result
+  // null = not yet searched (show the polled page); [] or rows = backend search result
   const [searchResults, setSearchResults] = useState(null);
 
   // When query changes, call backend; clear results when query is wiped
@@ -38,23 +51,25 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
       return;
     }
     let cancelled = false;
-    api.listApplications(query.trim())
+    api.searchApplications(query.trim())
       .then((data) => { if (!cancelled) setSearchResults(data || []); })
       .catch(() => { if (!cancelled) setSearchResults([]); });
     return () => { cancelled = true; };
   }, [query]);
 
-  // Source: backend search results when query is active, polled top-10 otherwise
+  // Source: backend search results when query is active, the current polled page otherwise
   const source = searchResults ?? requests;
+  const pageCount = Math.max(1, Math.ceil(total / 10));
 
-  const counts = useMemo(
+  const searchCounts = useMemo(
     () =>
-      requests.reduce((acc, r) => {
+      (searchResults ?? []).reduce((acc, r) => {
         acc[r.status] = (acc[r.status] ?? 0) + 1;
         return acc;
       }, {}),
-    [requests]
+    [searchResults]
   );
+  const visibleCounts = searchResults == null ? counts : searchCounts;
 
   // Status chip filter applies to whatever source is active; no local text filter
   const matches = useMemo(() => {
@@ -95,7 +110,7 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
       )}
 
       <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
-        <MetricTile label="Seen" value={requests.length} />
+        <MetricTile label="Seen" value={allTotal} />
         <MetricTile label="In progress" value={counts.IN_PROGRESS ?? 0} tone="info" />
       </Grid>
 
@@ -107,7 +122,12 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search applications"
         />
-        <ChipGroup options={FILTERS} value={filter} onChange={setFilter} counts={counts} />
+        <ChipGroup
+          options={FILTERS}
+          value={filter}
+          onChange={onFilterChange}
+          counts={visibleCounts}
+        />
       </Toolbar>
 
       <DataTable
@@ -119,9 +139,9 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
         footnote="newest first"
         empty={
           <EmptyState
-            title={requests.length === 0 ? 'Nothing received yet' : 'No application matches that'}
+            title={allTotal === 0 ? 'Nothing received yet' : 'No application matches that'}
           >
-            {requests.length === 0 ? (
+            {allTotal === 0 ? (
               <>
                 Send one from the <strong>sidecar</strong> at <strong>localhost:9000</strong>, or turn
                 the generator on in the orchestrator UI. Nothing in this screen sends applications —
@@ -133,6 +153,26 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
           </EmptyState>
         }
       />
+
+      {searchResults == null && (
+        <Toolbar style={{ marginTop: 'var(--ds-space-4)' }}>
+          <Button
+            variant="ghost"
+            disabled={page === 0}
+            onClick={() => onPageChange(page - 1)}
+          >
+            Previous
+          </Button>
+          <span>Page {page + 1} of {pageCount}</span>
+          <Button
+            variant="ghost"
+            disabled={!more}
+            onClick={() => onPageChange(page + 1)}
+          >
+            Next
+          </Button>
+        </Toolbar>
+      )}
     </>
   );
 }

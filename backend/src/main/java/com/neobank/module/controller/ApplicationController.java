@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
+import com.neobank.module.service.ApplicationService.ApplicationBoardPage;
+import com.neobank.module.service.ApplicationService.ApplicationBoardStatus;
 
 import jakarta.validation.Valid;
 
@@ -87,13 +90,37 @@ public class ApplicationController {
      * <p>Optional {@code ?q=} parameter: when present (even if empty), delegates to
      * {@link ApplicationService#searchApplications} which searches the full table and caps at 10.
      * An empty {@code q} returns {@code []} — the board is empty until the user types.
-     * Without {@code q} the top-10 default list is returned as before.</p>
+     * Without {@code q}, {@code ?page=} selects a 10-row page. Pagination metadata is returned in
+     * response headers; optional {@code ?status=} filters the full result set before pagination.
+     * The JSON body remains the same array shape used by existing clients.</p>
      */
     @GetMapping
-    public List<PolicyRecordView> list(@RequestParam(required = false) String q) {
+    public ResponseEntity<List<PolicyRecordView>> list(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) ApplicationBoardStatus status) {
         if (q != null) {
-            return applications.searchApplications(q);
+            return ResponseEntity.ok(applications.searchApplications(q));
         }
-        return applications.findAll();
+        ApplicationBoardPage board = applications.findAll(page, 10, status);
+        Page<PolicyRecordView> result = board.rows();
+        return ResponseEntity.ok()
+                .header("X-Page", String.valueOf(result.getNumber()))
+                .header("X-More-Results", String.valueOf(result.hasNext()))
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .header("X-All-Count", String.valueOf(board.allCount()))
+                .header("X-Status-In-Progress-Count",
+                        statusCount(board, ApplicationBoardStatus.IN_PROGRESS))
+                .header("X-Status-Approved-Count",
+                        statusCount(board, ApplicationBoardStatus.APPROVED))
+                .header("X-Status-Rejected-Count",
+                        statusCount(board, ApplicationBoardStatus.REJECTED))
+                .header("X-Status-Referred-Count",
+                        statusCount(board, ApplicationBoardStatus.REFERRED))
+                .body(result.getContent());
+    }
+
+    private String statusCount(ApplicationBoardPage board, ApplicationBoardStatus status) {
+        return String.valueOf(board.statusCounts().getOrDefault(status, 0L));
     }
 }

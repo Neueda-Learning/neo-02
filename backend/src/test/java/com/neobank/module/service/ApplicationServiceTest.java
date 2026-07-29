@@ -19,12 +19,17 @@ import com.neobank.module.model.PolicyRecord;
 import com.neobank.module.model.RuleResult;
 import com.neobank.module.repository.PolicyConfigReader;
 import com.neobank.module.repository.PolicyRecordRepository;
+import com.neobank.module.service.ApplicationService.ApplicationBoardPage;
+import com.neobank.module.service.ApplicationService.ApplicationBoardStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 class ApplicationServiceTest {
 
@@ -142,15 +147,61 @@ class ApplicationServiceTest {
     @Test
     void boardShowsTheEffectiveOutcomeAfterDecision() {
         PolicyRecord row = decidedRecord("SIM-05");
-        when(records.findTop10ByOrderByCreatedAtDescApplicationIdDesc()).thenReturn(List.of(row));
+        PageRequest firstPage = PageRequest.of(0, 10);
+        when(records.findAllByOrderByCreatedAtDescApplicationIdDesc(firstPage))
+                .thenReturn(new PageImpl<>(List.of(row), firstPage, 1));
+        when(records.count()).thenReturn(1L);
 
-        List<PolicyRecordView> result = service.findAll();
+        ApplicationBoardPage result = service.findAll(0, 10, null);
 
-        assertThat(result).singleElement().satisfies(view -> {
+        assertThat(result.rows().getContent()).singleElement().satisfies(view -> {
             assertThat(view.applicationId()).isEqualTo("SIM-05");
             assertThat(view.status()).isEqualTo("APPROVED");
             assertThat(view.reference()).isEqualTo("pol-1234567890");
         });
+        assertThat(result.allCount()).isEqualTo(1);
+    }
+
+    @Test
+    void boardCapsPageSizeAtTen() {
+        PageRequest cappedPage = PageRequest.of(2, 10);
+        when(records.findAllByOrderByCreatedAtDescApplicationIdDesc(cappedPage))
+                .thenReturn(Page.empty(cappedPage));
+
+        service.findAll(2, 50, null);
+
+        verify(records).findAllByOrderByCreatedAtDescApplicationIdDesc(cappedPage);
+    }
+
+    @Test
+    void boardFiltersBeforePaginationAndReturnsGlobalCounts() {
+        PageRequest firstPage = PageRequest.of(0, 10);
+        List<PolicyRecord> referredRows = java.util.stream.IntStream.rangeClosed(1, 3)
+                .mapToObj(index -> {
+                    PolicyRecord row = new PolicyRecord(
+                            "SIM-REFERRED-" + index, "pol-referred-" + index);
+                    row.completeDecision(new DecisionResult(
+                            PolicyOutcome.REFERRED, PolicyOutcome.REFERRED, List.of()));
+                    return row;
+                })
+                .toList();
+        when(records.findByOutcomeOrderByCreatedAtDescApplicationIdDesc(
+                PolicyOutcome.REFERRED, firstPage))
+                .thenReturn(new PageImpl<>(referredRows, firstPage, 3));
+        when(records.count()).thenReturn(20L);
+        when(records.countByOutcomeIsNullAndProcessingStatus("IN_PROGRESS")).thenReturn(2L);
+        when(records.countByOutcome(PolicyOutcome.APPROVED)).thenReturn(10L);
+        when(records.countByOutcome(PolicyOutcome.REJECTED)).thenReturn(5L);
+        when(records.countByOutcome(PolicyOutcome.REFERRED)).thenReturn(3L);
+
+        ApplicationBoardPage result =
+                service.findAll(0, 10, ApplicationBoardStatus.REFERRED);
+
+        assertThat(result.rows().getTotalElements()).isEqualTo(3);
+        assertThat(result.allCount()).isEqualTo(20);
+        assertThat(result.statusCounts()).containsEntry(ApplicationBoardStatus.REFERRED, 3L);
+        verify(records).findByOutcomeOrderByCreatedAtDescApplicationIdDesc(
+                PolicyOutcome.REFERRED, firstPage);
     }
 
     @Test
