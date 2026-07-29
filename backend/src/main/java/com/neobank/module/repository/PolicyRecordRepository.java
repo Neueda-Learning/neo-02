@@ -26,4 +26,12 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
     @Query(value = "SELECT p FROM PolicyRecord p WHERE p.applicationId IN :applicationIds ORDER BY p.submittedAt DESC")
     List<PolicyRecord> findByApplicationIdInOrderBySubmittedAtDesc(
             @Param("applicationIds") List<String> applicationIds);
+
+    /**
+     * UC-01 name search: case-insensitive substring match on the applicant's full name, captured
+     * locally at intake (see {@code applicant_full_name}), newest first, limited by caller-supplied
+     * Pageable. Records predating that capture (or with a null name) never match.
+     */
+    List<PolicyRecord> findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+            String name, Pageable pageable);
 }

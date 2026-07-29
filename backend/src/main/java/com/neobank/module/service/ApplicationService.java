@@ -104,8 +104,10 @@ public class ApplicationService {
      * UC-01 search cases by id or applicant name.
      *
      * <p>If the query looks like an applicationId (contains non-space chars), search locally.
-     * If the query looks like a name (multiple words or single name), resolve through the
-     * orchestrator to get applicationIds, then search locally.
+     * Otherwise it is treated as a name search: the locally captured {@code applicant_full_name}
+     * column (populated at intake, see {@link #applicantFullName(ApplicationRequest)}) is tried
+     * first; only when that yields nothing does the orchestrator get asked to resolve the name
+     * to ids, covering records captured before that column existed.
      *
      * @param query the search string (id or name)
      * @param limit the maximum number of results to return (capped at 10 per spec)
@@ -126,7 +128,17 @@ public class ApplicationService {
             return List.of(PolicyRecordView.of(byId.get()));
         }
 
-        // If not found by ID, treat as name search: resolve through orchestrator
+        // Name search: try the locally captured applicant name first
+        List<PolicyRecord> byName = records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                q, PageRequest.of(0, limit));
+        if (!byName.isEmpty()) {
+            return byName.stream()
+                    .map(PolicyRecordView::of)
+                    .toList();
+        }
+
+        // No local name match — resolve through the orchestrator (covers records captured
+        // before applicant_full_name existed, and any orchestrator-only records).
         List<String> applicationIds = orchestrator.searchApplicationIdsByName(q);
         if (applicationIds.isEmpty()) {
             // Local resilience fallback (useful in sidecar/local where name search may be absent):
