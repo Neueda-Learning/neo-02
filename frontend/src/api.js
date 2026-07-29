@@ -37,7 +37,10 @@ export const api = {
       ? request(`/api/v1/applications?q=${encodeURIComponent(query)}`)
       : request('/api/v1/applications'),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
+  getCaseApplicant: (id) => request(`/cases/${encodeURIComponent(id)}/applicant`),
   listConfigVersions: () => request('/config/versions'),
+  listReasonCodes: (from, to) =>
+    request(`/reason-codes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   searchCases: async (query, limit = 10) => {
     const { body, headers } = await fetchJson(
       `/api/v1/cases?q=${encodeURIComponent(query)}&limit=${limit}`

@@ -2,6 +2,7 @@ package com.neobank.module.repository;
 
 import com.neobank.module.model.PolicyRecord;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +14,10 @@ import org.springframework.data.repository.query.Param;
 public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, String> {
 
     List<PolicyRecord> findTop10ByOrderByCreatedAtDescApplicationIdDesc();
+
+    List<PolicyRecord> findBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(
+            Instant fromInclusive,
+            Instant toExclusive);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select record from PolicyRecord record where record.applicationId = :applicationId")
@@ -29,3 +34,4 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
     List<PolicyRecord> findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
             String name, Pageable pageable);
 }
+

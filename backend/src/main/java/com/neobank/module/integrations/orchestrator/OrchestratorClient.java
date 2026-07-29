@@ -62,6 +62,14 @@ public class OrchestratorClient {
         }
     }
 
+    /** Fetches the orchestrator-owned application live for the standard applicant proxy. */
+    public Application getApplication(String applicationId) {
+        return http.get()
+                .uri(applicationsUrl + "/{applicationId}", applicationId)
+                .retrieve()
+                .body(Application.class);
+    }
+
     /**
      * Search for application IDs by applicant name via the orchestrator.
      * UC-01 name search: GET /api/v1/applications?name={query} returns a list of application IDs

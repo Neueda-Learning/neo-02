@@ -3,6 +3,7 @@ import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-syste
 import CasesScreen from './components/CasesScreen.jsx';
 import DecisionDetailScreen from './components/DecisionDetailScreen.jsx';
 import PolicyConfigScreen from './components/PolicyConfigScreen.jsx';
+import RejectionPatternsScreen from './components/RejectionPatternsScreen.jsx';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import { api } from './api.js';
 
@@ -51,6 +52,7 @@ export default function App() {
   const up = !error && health?.status === 'UP';
   const screens = [
     { id: 'applications', label: 'Applications' },
+    { id: 'patterns', label: 'Rejection Patterns' },
     { id: 'cases', label: 'Search cases' },
     {
       id: 'decision',
@@ -97,6 +99,7 @@ export default function App() {
       {screen === 'applications' && (
         <RequestsScreen requests={requests} error={error} info={info} onOpenCase={openCase} />
       )}
+      {screen === 'patterns' && <RejectionPatternsScreen />}
       {screen === 'cases' && <CasesScreen info={info} />}
       {screen === 'decision' && selectedCaseId && (
         <DecisionDetailScreen
