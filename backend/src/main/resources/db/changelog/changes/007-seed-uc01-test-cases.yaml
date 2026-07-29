@@ -25,6 +25,9 @@ databaseChangeLog:
                   name: reference
                   value: 'pol-maria-001'
               - column:
+                  name: applicant_full_name
+                  value: 'Maria Nowak'
+              - column:
                   name: policy_config_version
                   valueNumeric: 1
               - column:
@@ -63,6 +66,9 @@ databaseChangeLog:
               - column:
                   name: reference
                   value: 'pol-sofia-001'
+              - column:
+                  name: applicant_full_name
+                  value: 'Sofia Garcia'
               - column:
                   name: policy_config_version
                   valueNumeric: 1

@@ -21,6 +21,7 @@ import { time } from '../status.js';
 export default function CasesScreen({ info }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState(false);
@@ -31,6 +32,7 @@ export default function CasesScreen({ info }) {
     e.preventDefault();
     if (!query.trim()) {
       setResults([]);
+      setMore(false);
       setSearched(false);
       return;
     }
@@ -38,12 +40,14 @@ export default function CasesScreen({ info }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.searchCases(query.trim(), 10);
-      setResults(data || []);
+      const { results: rows, more: hasMore } = await api.searchCases(query.trim(), 10);
+      setResults(rows || []);
+      setMore(hasMore);
       setSearched(true);
     } catch (err) {
       setError(err.message);
       setResults([]);
+      setMore(false);
       setSearched(true);
     } finally {
       setLoading(false);
@@ -210,7 +214,14 @@ export default function CasesScreen({ info }) {
         </EmptyState>
       )}
 
-      {results.length > 0 && <DataTable columns={columns} rows={results} />}
+      {results.length > 0 && (
+        <DataTable
+          columns={columns}
+          rows={results}
+          total={more ? results.length + 1 : results.length}
+          footnote="newest first"
+        />
+      )}
 
       {!searched && !loading && (
         <EmptyState title="Enter a search query">

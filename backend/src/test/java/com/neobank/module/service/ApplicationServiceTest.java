@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.springframework.data.domain.Pageable;
 
+import com.neobank.module.dto.CaseSearchResult;
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
@@ -113,5 +114,113 @@ class ApplicationServiceTest {
 
         assertThat(results).singleElement()
                 .satisfies(v -> assertThat(v.applicationId()).isEqualTo("APP-001"));
+    }
+
+    @Test
+    void searchCasesReturnsEmptyResultForBlankOrNullQuery() {
+        assertThat(service.searchCases(null, 10).results()).isEmpty();
+        assertThat(service.searchCases(null, 10).more()).isFalse();
+        assertThat(service.searchCases("   ", 10).results()).isEmpty();
+    }
+
+    @Test
+    void searchCasesFindsByApplicationIdWithoutEverCallingTheOrchestrator() {
+        PolicyRecord row = new PolicyRecord("APP-777", "ref-777");
+        when(records.findById("APP-777")).thenReturn(java.util.Optional.of(row));
+
+        CaseSearchResult result = service.searchCases("APP-777", 10);
+
+        assertThat(result.results()).singleElement()
+                .satisfies(v -> assertThat(v.applicationId()).isEqualTo("APP-777"));
+        assertThat(result.more()).isFalse();
+        verify(orchestrator, never()).searchApplicationIdsByName(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void searchCasesFindsByLocalApplicantFullNameBeforeAskingTheOrchestrator() {
+        when(records.findById("Maria")).thenReturn(java.util.Optional.empty());
+        PolicyRecord row = new PolicyRecord("APP-001", "ref-001");
+        when(records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("Maria"), any(Pageable.class))).thenReturn(List.of(row));
+
+        CaseSearchResult result = service.searchCases("Maria", 10);
+
+        assertThat(result.results()).singleElement()
+                .satisfies(v -> assertThat(v.applicationId()).isEqualTo("APP-001"));
+        assertThat(result.more()).isFalse();
+        verify(orchestrator, never()).searchApplicationIdsByName(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void searchCasesFlagsMoreWhenLocalNameMatchesExceedTheLimit() {
+        when(records.findById("Nowak")).thenReturn(java.util.Optional.empty());
+        List<PolicyRecord> elevenRows = new ArrayList<>();
+        for (int i = 1; i <= 11; i++) {
+            elevenRows.add(new PolicyRecord("APP-%03d".formatted(i), "ref-%03d".formatted(i)));
+        }
+        when(records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("Nowak"), any(Pageable.class))).thenReturn(elevenRows);
+
+        CaseSearchResult result = service.searchCases("Nowak", 10);
+
+        assertThat(result.results()).hasSize(10);
+        assertThat(result.more()).isTrue();
+    }
+
+    @Test
+    void searchCasesFallsBackToTheOrchestratorWhenNoLocalNameMatches() {
+        when(records.findById("Sofia")).thenReturn(java.util.Optional.empty());
+        when(records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("Sofia"), any(Pageable.class))).thenReturn(List.of());
+        when(orchestrator.searchApplicationIdsByName("Sofia")).thenReturn(List.of("APP-002"));
+        PolicyRecord row = new PolicyRecord("APP-002", "ref-002");
+        when(records.findByApplicationIdInOrderBySubmittedAtDesc(List.of("APP-002")))
+                .thenReturn(List.of(row));
+
+        CaseSearchResult result = service.searchCases("Sofia", 10);
+
+        assertThat(result.results()).singleElement()
+                .satisfies(v -> assertThat(v.applicationId()).isEqualTo("APP-002"));
+        assertThat(result.more()).isFalse();
+        verify(orchestrator).searchApplicationIdsByName("Sofia");
+    }
+
+    @Test
+    void searchCasesFlagsMoreWhenTheOrchestratorResolvesMoreIdsThanTheLimit() {
+        when(records.findById("Common")).thenReturn(java.util.Optional.empty());
+        when(records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("Common"), any(Pageable.class))).thenReturn(List.of());
+        List<String> elevenIds = new ArrayList<>();
+        for (int i = 1; i <= 11; i++) {
+            elevenIds.add("APP-%03d".formatted(i));
+        }
+        when(orchestrator.searchApplicationIdsByName("Common")).thenReturn(elevenIds);
+        List<String> firstTen = elevenIds.subList(0, 10);
+        List<PolicyRecord> tenRows = firstTen.stream()
+                .map(id -> new PolicyRecord(id, "ref-" + id))
+                .toList();
+        when(records.findByApplicationIdInOrderBySubmittedAtDesc(firstTen)).thenReturn(tenRows);
+
+        CaseSearchResult result = service.searchCases("Common", 10);
+
+        assertThat(result.results()).hasSize(10);
+        assertThat(result.more()).isTrue();
+    }
+
+    @Test
+    void searchCasesFallsBackToApplicationIdSubstringWhenNameResolvesToNothing() {
+        when(records.findById("ZZZ")).thenReturn(java.util.Optional.empty());
+        when(records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("ZZZ"), any(Pageable.class))).thenReturn(List.of());
+        when(orchestrator.searchApplicationIdsByName("ZZZ")).thenReturn(List.of());
+        PolicyRecord row = new PolicyRecord("ZZZ-001", "ref-zzz");
+        when(records.findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
+                eq("ZZZ"), any(Pageable.class))).thenReturn(List.of(row));
+
+        CaseSearchResult result = service.searchCases("ZZZ", 10);
+
+        assertThat(result.results()).singleElement()
+                .satisfies(v -> assertThat(v.applicationId()).isEqualTo("ZZZ-001"));
+        assertThat(result.more()).isFalse();
     }
 }

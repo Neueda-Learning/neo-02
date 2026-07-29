@@ -52,7 +52,10 @@ class ModuleApplicationTests {
         }
     }
 
-    /** SIM-01 from the sidecar corpus, trimmed to what these assertions read. */
+    /** SIM-01 from the sidecar corpus, trimmed to what these assertions read.
+     * The applicant name is a neutral placeholder (not "Maria"/"Sofia") so the many rows this
+     * template creates across this test class never collide with the UC-01 name-search
+     * checkpoint tests further down. */
     private static final String APPLICATION = """
             {
               "applicationId": "%s",
@@ -62,7 +65,24 @@ class ModuleApplicationTests {
                 "applicationId": "%s",
                 "channel": "MOBILE_APP",
                 "submittedAt": "2026-07-25T09:14:00Z",
-                "applicant": {"fullName": "Maria Nowak", "dateOfBirth": "1996-04-11"},
+                "applicant": {"fullName": "Fixture Applicant", "dateOfBirth": "1996-04-11"},
+                "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 3000}
+              }
+            }
+            """;
+
+    /** Same envelope shape as {@link #APPLICATION}, with a caller-supplied applicant full name —
+     * used by the UC-01 name-search tests that need several rows sharing one name. */
+    private static final String APPLICATION_WITH_NAME = """
+            {
+              "applicationId": "%s",
+              "correlationId": "sim-0001-4c1a-8f2b-1d5e9a000001",
+              "command": "process-application",
+              "application": {
+                "applicationId": "%s",
+                "channel": "MOBILE_APP",
+                "submittedAt": "2026-07-25T09:14:00Z",
+                "applicant": {"fullName": "%s", "dateOfBirth": "1996-04-11"},
                 "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 3000}
               }
             }
@@ -76,6 +96,10 @@ class ModuleApplicationTests {
 
     private static String application(String id) {
         return APPLICATION.formatted(id, id);
+    }
+
+    private static String applicationWithName(String id, String fullName) {
+        return APPLICATION_WITH_NAME.formatted(id, id, fullName);
     }
 
     @Test
@@ -334,9 +358,85 @@ class ModuleApplicationTests {
 
         @Test
         void httpRequestCasesNameQueryFindsMariaCheckpointCase() throws Exception {
-                mvc.perform(get("/api/v1/cases?q=Maria&limit=10"))
+                // Checkpoint (acceptance criterion 5): searching "Maria" shows her case with
+                // outcome APPROVED and no sampled badge.
+                mvc.perform(get("/api/v1/cases").param("q", "Maria").param("limit", "10"))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-maria-001')]").exists());
+                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-maria-001')]").exists())
+                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-maria-001')].outcome")
+                                                .value(org.hamcrest.Matchers.contains("APPROVED")))
+                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-maria-001')].sampled")
+                                                .value(org.hamcrest.Matchers.contains(false)));
+        }
+
+        @Test
+        void httpRequestCasesNameQueryFindsSofiaCheckpointCase() throws Exception {
+                // Checkpoint (acceptance criterion 6): searching "Sofia" shows her case with
+                // outcome REJECTED.
+                mvc.perform(get("/api/v1/cases").param("q", "Sofia").param("limit", "10"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-sofia-001')]").exists())
+                                .andExpect(jsonPath("$[?(@.applicationId == 'uc01-sofia-001')].outcome")
+                                                .value(org.hamcrest.Matchers.contains("REJECTED")));
+        }
+
+        @Test
+        void httpRequestCasesNoMatchesReturns200EmptyArray() throws Exception {
+                // Acceptance criterion 7: no matches -> [] and HTTP 200, never a 500.
+                mvc.perform(get("/api/v1/cases?q=definitely-nobody-by-this-name-or-id"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isArray())
+                                .andExpect(jsonPath("$").isEmpty());
+        }
+
+        @Test
+        void httpRequestCasesBlankOrMissingQueryReturnsEmptyByDefault() throws Exception {
+                // Acceptance criterion 1: the board is EMPTY by default — no query, no rows.
+                mvc.perform(get("/api/v1/cases"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isEmpty());
+
+                mvc.perform(get("/api/v1/cases?q="))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isEmpty());
+        }
+
+        @Test
+        void httpRequestCasesFlagsMoreResultsHeaderPastTheTenRowCap() throws Exception {
+                // Acceptance criterion 2: an 11th match means the response flags
+                // "more — refine your search" — surfaced here as the X-More-Results header so the
+                // body stays a plain array.
+                for (int i = 1; i <= 11; i++) {
+                        mvc.perform(post("/api/v1/applications")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(applicationWithName(
+                                                        "UC01-MORE-%02d".formatted(i), "Refine Checkpoint Person")))
+                                        .andExpect(status().isAccepted());
+                }
+
+                mvc.perform(get("/api/v1/cases")
+                                .param("q", "Refine Checkpoint Person")
+                                .param("limit", "10"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$", hasSize(10)))
+                                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .header().string("X-More-Results", "true"));
+        }
+
+        @Test
+        void httpRequestCasesDoesNotFlagMoreResultsWhenWithinTheCap() throws Exception {
+                mvc.perform(post("/api/v1/applications")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(applicationWithName("UC01-EXACT-01", "Within Cap Person")))
+                                .andExpect(status().isAccepted());
+
+                mvc.perform(get("/api/v1/cases")
+                                .param("q", "Within Cap Person")
+                                .param("limit", "10"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$", hasSize(1)))
+                                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .header().string("X-More-Results", "false"));
         }
 
         @Test

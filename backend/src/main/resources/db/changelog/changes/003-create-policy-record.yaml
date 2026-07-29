@@ -1,6 +1,8 @@
 # policy_record — one durable row per orchestrator application: the case, queue item, decision
-# trace, and reporting source (see docs/schema-design.md §6.1). Only application_id crosses the
-# schema boundary from the inbound application payload; no applicant profile is stored.
+# trace, and reporting source (see docs/schema-design.md §6.1). application_id crosses the
+# schema boundary from the inbound application payload; applicant_full_name is captured at
+# intake (application.applicant.fullName) to support UC-01 name search — a deliberate
+# deviation from the original "no applicant profile stored" design, see uc-01-search-cases.md.
 databaseChangeLog:
   - changeSet:
       id: 003-create-policy-record
@@ -36,6 +38,10 @@ databaseChangeLog:
                   type: VARCHAR(32)
                   constraints:
                     nullable: false
+              - column:
+                  # Captured once at intake from application.applicant.fullName; not refreshed later.
+                  name: applicant_full_name
+                  type: VARCHAR(200)
               - column:
                   # FK to the policy_config version used; null until the worker begins.
                   name: policy_config_version

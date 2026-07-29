@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClientException;
 
+import com.neobank.module.dto.CaseSearchResult;
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.service.ApplicationService;
@@ -47,6 +48,11 @@ public class CasesController {
      * <p>GET /cases?q={id-or-name}&limit=10 →
      * [{"applicationId":"...", "submittedAt":"...", "outcome":"...", "sampled":false, "reasonCount":1}, ...]
      *
+     * <p>The {@code X-More-Results} response header is {@code true} when the true match count
+     * exceeded {@code limit} (spec acceptance criterion 2 — "an 11th match means the response
+     * flags 'more — refine your search'"), and {@code false} otherwise. The body stays a plain
+     * array so existing clients are unaffected.
+     *
      * @param query the search query (applicationId or applicant name)
      * @param limit maximum results (capped at 10 per spec; defaults to 10)
      * @return list of matching cases, newest first; empty if no matches
@@ -58,11 +64,15 @@ public class CasesController {
         
         if (query == null || query.trim().isEmpty()) {
             // Empty by default — no query, no rows fetched
-            return ResponseEntity.ok(List.of());
+            return ResponseEntity.ok()
+                    .header("X-More-Results", "false")
+                    .body(List.of());
         }
 
-        List<PolicyRecordView> results = applications.searchCases(query, limit);
-        return ResponseEntity.ok(results);
+        CaseSearchResult result = applications.searchCases(query, limit);
+        return ResponseEntity.ok()
+                .header("X-More-Results", String.valueOf(result.more()))
+                .body(result.results());
     }
 
     /**

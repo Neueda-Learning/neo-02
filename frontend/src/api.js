@@ -7,7 +7,7 @@
 // on the load balancer.
 const BASE = import.meta.env.VITE_API_BASE || '';
 
-async function request(path, options = {}) {
+async function fetchJson(path, options = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -27,8 +27,13 @@ async function request(path, options = {}) {
     error.details = details;
     throw error;
   }
-  if (res.status === 204) return null;
-  return res.json();
+  const body = res.status === 204 ? null : await res.json();
+  return { body, headers: res.headers };
+}
+
+async function request(path, options = {}) {
+  const { body } = await fetchJson(path, options);
+  return body;
 }
 
 // This UI only ever READS. Applications arrive from the orchestrator — the real one, or the
@@ -42,6 +47,14 @@ export const api = {
       ? request(`/api/v1/applications?q=${encodeURIComponent(q)}`)
       : request('/api/v1/applications'),
   getApplication: (id) => request(`/api/v1/applications/${id}`),
-  searchCases: (query, limit = 10) => request(`/api/v1/cases?q=${encodeURIComponent(query)}&limit=${limit}`),
+  // Resolves { results, more } — `more` is the X-More-Results header: true when the true match
+  // count exceeded `limit` (spec acceptance criterion 2), so the board can flag "refine your
+  // search" instead of silently truncating.
+  searchCases: async (query, limit = 10) => {
+    const { body, headers } = await fetchJson(
+      `/api/v1/cases?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+    return { results: body ?? [], more: headers.get('X-More-Results') === 'true' };
+  },
   getApplicant: (id) => request(`/api/v1/cases/${id}/applicant`),
 };

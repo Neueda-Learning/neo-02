@@ -11,6 +11,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.neobank.module.dto.CaseSearchResult;
 import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
@@ -109,14 +110,21 @@ public class ApplicationService {
      * first; only when that yields nothing does the orchestrator get asked to resolve the name
      * to ids, covering records captured before that column existed.
      *
+     * <p><b>Deviation from the v5 spec on file</b> (see {@code uc-01-search-cases.md}): the spec
+     * says the schema holds zero applicant columns and every name search resolves through the
+     * orchestrator first. This module persists {@code applicant_full_name} at intake (see
+     * {@link PolicyRecordWriter}) and searches it locally before falling back to the
+     * orchestrator — a deliberate, explicitly-requested change, kept as-is by product decision.
+     *
      * @param query the search string (id or name)
      * @param limit the maximum number of results to return (capped at 10 per spec)
-     * @return list of matching PolicyRecordView, newest first
+     * @return the matching rows (newest first, capped at {@code limit}) plus whether the true
+     *         match count exceeded that cap
      */
     @Transactional(readOnly = true)
-    public List<PolicyRecordView> searchCases(String query, int limit) {
+    public CaseSearchResult searchCases(String query, int limit) {
         if (query == null || query.trim().isEmpty()) {
-            return List.of();
+            return new CaseSearchResult(List.of(), false);
         }
 
         String q = query.trim();
@@ -125,16 +133,15 @@ public class ApplicationService {
         // Try to search by application ID first (direct local lookup)
         Optional<PolicyRecord> byId = records.findById(q);
         if (byId.isPresent()) {
-            return List.of(PolicyRecordView.of(byId.get()));
+            return new CaseSearchResult(List.of(PolicyRecordView.of(byId.get())), false);
         }
 
-        // Name search: try the locally captured applicant name first
+        // Name search: try the locally captured applicant name first. One extra row is fetched
+        // so a match past the cap can be reported as "more" without a separate count query.
         List<PolicyRecord> byName = records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
-                q, PageRequest.of(0, limit));
+                q, PageRequest.of(0, limit + 1));
         if (!byName.isEmpty()) {
-            return byName.stream()
-                    .map(PolicyRecordView::of)
-                    .toList();
+            return cappedResult(byName, limit);
         }
 
         // No local name match — resolve through the orchestrator (covers records captured
@@ -143,23 +150,34 @@ public class ApplicationService {
         if (applicationIds.isEmpty()) {
             // Local resilience fallback (useful in sidecar/local where name search may be absent):
             // search application ids by substring, still capped and sorted newest first.
-            return records.findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
-                            q, PageRequest.of(0, limit))
-                    .stream()
-                    .map(PolicyRecordView::of)
-                    .toList();
+            List<PolicyRecord> byIdSubstring = records.findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
+                    q, PageRequest.of(0, limit + 1));
+            return cappedResult(byIdSubstring, limit);
         }
 
-        // Limit IDs to fetch
-        List<String> limitedIds = applicationIds.size() > limit
-                ? applicationIds.subList(0, limit)
-                : applicationIds;
+        // The orchestrator's full match count (before capping) is the true "more" signal.
+        boolean more = applicationIds.size() > limit;
+        List<String> limitedIds = more ? applicationIds.subList(0, limit) : applicationIds;
 
         // Fetch matching records from local table
         List<PolicyRecord> matches = records.findByApplicationIdInOrderBySubmittedAtDesc(limitedIds);
-        return matches.stream()
+        List<PolicyRecordView> views = matches.stream()
                 .limit(limit)
                 .map(PolicyRecordView::of)
                 .toList();
+        return new CaseSearchResult(views, more);
+    }
+
+    /**
+     * Trims a locally-fetched, over-by-one row list down to {@code limit} and reports whether
+     * the extra row means there are more matches than the cap.
+     */
+    private static CaseSearchResult cappedResult(List<PolicyRecord> rows, int limit) {
+        boolean more = rows.size() > limit;
+        List<PolicyRecordView> views = rows.stream()
+                .limit(limit)
+                .map(PolicyRecordView::of)
+                .toList();
+        return new CaseSearchResult(views, more);
     }
 }
