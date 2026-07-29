@@ -51,6 +51,8 @@ services:
       # integration/prod set http plus the instructor-published URI template.
       REGISTRY_MODE: ${REGISTRY_MODE:-in-memory}
       REGISTRY_LOOKUP_URL: ${REGISTRY_LOOKUP_URL:-}
+      HTTP_CONNECT_TIMEOUT_MS: ${HTTP_CONNECT_TIMEOUT_MS:-2000}
+      HTTP_READ_TIMEOUT_MS: ${HTTP_READ_TIMEOUT_MS:-5000}
       # Any localhost port by default — see WebConfig for why a fixed list breaks the UI.
       CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:*,http://127.0.0.1:*}
     ports:

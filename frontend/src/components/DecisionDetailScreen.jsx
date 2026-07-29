@@ -3,11 +3,13 @@ import {
   Alert,
   Badge,
   Button,
+  Caption,
   Card,
   Field,
   Grid,
   KeyValue,
   PageHeader,
+  Split,
   Spinner,
   Stack,
   Tag,
@@ -163,7 +165,11 @@ export default function DecisionDetailScreen({ applicationId, onBack, backLabel 
         </Alert>
       )}
 
-      <Stack gap={5}>
+      <Split
+        ratio="wide-main"
+        sidebar={<ApplicantPanel applicationId={applicationId} />}
+      >
+        <Stack gap={5}>
         {detail.decidedBy && (
           <Card
             title="Human decision"
@@ -277,15 +283,75 @@ export default function DecisionDetailScreen({ applicationId, onBack, backLabel 
           </Grid>
         </Card>
 
-        {detail.ruleResults?.length > 0 && (
-          <Grid cols="auto" min={280}>
-            {detail.ruleResults.map((rule) => (
-              <RuleCard key={rule.ruleName} rule={rule} />
-            ))}
-          </Grid>
-        )}
-      </Stack>
+          {detail.ruleResults?.length > 0 && (
+            <Grid cols="auto" min={280}>
+              {detail.ruleResults.map((rule) => (
+                <RuleCard key={rule.ruleName} rule={rule} />
+              ))}
+            </Grid>
+          )}
+        </Stack>
+      </Split>
     </>
+  );
+}
+
+function ApplicantPanel({ applicationId }) {
+  const [applicant, setApplicant] = useState(null);
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      setApplicant(null);
+      setError(null);
+      try {
+        const view = await api.getCaseApplicant(applicationId);
+        if (active) setApplicant(view);
+      } catch (e) {
+        if (active) setError(e);
+      }
+    }
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [applicationId, attempt]);
+
+  return (
+    <Card title="Applicant">
+      {error ? (
+        <Stack gap={3}>
+          <Alert tone="warning" title="Applicant details unavailable">
+            {error.message}
+          </Alert>
+          <Button size="sm" onClick={() => setAttempt((value) => value + 1)}>
+            Retry
+          </Button>
+        </Stack>
+      ) : applicant ? (
+        <KeyValue
+          stacked
+          items={[
+            { label: 'Full name', value: valueOrDash(applicant.fullName) },
+            { label: 'Date of birth', value: valueOrDash(applicant.dateOfBirth) },
+            { label: 'Country of residence', value: valueOrDash(applicant.countryOfResidence) },
+            { label: 'Tax residencies', value: listOrDash(applicant.taxResidencies) },
+            { label: 'Product', value: valueOrDash(applicant.productCode) },
+            { label: 'Channel', value: valueOrDash(applicant.channel) },
+          ]}
+        />
+      ) : (
+        <Spinner label="Loading applicant details" />
+      )}
+      <Caption>
+        Fetched live from the orchestrator when this case opens. Applicant data is not stored or
+        cached by this module.
+      </Caption>
+    </Card>
   );
 }
 
@@ -345,4 +411,12 @@ function RuleCard({ rule }) {
 
 function yesNo(value) {
   return value ? 'Yes' : 'No';
+}
+
+function valueOrDash(value) {
+  return value == null || value === '' ? '—' : value;
+}
+
+function listOrDash(values) {
+  return Array.isArray(values) && values.length > 0 ? values.join(', ') : '—';
 }

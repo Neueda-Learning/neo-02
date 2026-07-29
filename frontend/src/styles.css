@@ -55,3 +55,27 @@
   margin-top: 0;
 }
 
+/* UC07's insert-only policy editor. Each restriction stays visually grouped as
+ * one record while the shared form controls keep field errors accessible. */
+.policy-editor__restriction {
+  padding: var(--ds-space-4);
+  border: var(--ds-border-width) solid var(--ds-color-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface-sunken);
+}
+
+.policy-editor__restriction-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-3);
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-sm);
+}
+
+.policy-editor__empty-list {
+  margin: 0;
+  color: var(--ds-color-text-muted);
+  font-size: var(--ds-text-md);
+}
