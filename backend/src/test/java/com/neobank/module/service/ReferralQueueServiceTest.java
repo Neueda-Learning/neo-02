@@ -3,7 +3,6 @@ package com.neobank.module.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,7 +65,7 @@ class ReferralQueueServiceTest {
     }
 
     @Test
-    void idempotentReplayDoesNotSendAnotherCallback() {
+    void idempotentReplayResendsTheIdempotentCallback() {
         PolicyRecord record = referred("app-1287", true, false);
         record.completeManualDecision(
                 PolicyOutcome.APPROVED, "machine confirmed", "s.chen", java.time.Instant.now());
@@ -76,8 +75,8 @@ class ReferralQueueServiceTest {
 
         service.decide("app-1287", PolicyOutcome.APPROVED, "machine confirmed", "s.chen");
 
-        verify(orchestrator, never()).manualPolicyDecision(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
+        verify(orchestrator).manualPolicyDecision(
+                "app-1287", PolicyOutcome.APPROVED, "machine confirmed");
     }
 
     @Test

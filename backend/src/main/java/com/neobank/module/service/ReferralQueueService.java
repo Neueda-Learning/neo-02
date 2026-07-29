@@ -51,9 +51,9 @@ public class ReferralQueueService {
         String cleanOperator = clean(operator, "operator");
         ReferralCaseWriter.ManualWriteResult result =
                 writer.decide(applicationId, outcome, cleanReason, cleanOperator);
-        if (result.changed()) {
-            orchestrator.manualPolicyDecision(applicationId, outcome, cleanReason);
-        }
+        // The callback is a PUT, so replaying it is safe. Always resend an exact idempotent
+        // decision request so a transient failure during the first delivery can recover.
+        orchestrator.manualPolicyDecision(applicationId, outcome, cleanReason);
         return CaseDetailView.of(result.record());
     }
 

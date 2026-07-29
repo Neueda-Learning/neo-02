@@ -107,9 +107,11 @@ class ReferralCaseWriterTest {
         assertThat(saved.getRuleResults()).hasSize(4);
         assertThat(queue.findOpenReferrals()).isEmpty();
 
-        assertThat(writer.decide(
+        var replay = writer.decide(
                 "app-1287", PolicyOutcome.APPROVED,
-                "sampling QA — machine confirmed", "s.chen").changed()).isFalse();
+                "sampling QA — machine confirmed", "s.chen");
+        assertThat(replay.changed()).isFalse();
+        assertThat(replay.record().getDecidedAt()).isEqualTo(result.record().getDecidedAt());
     }
 
     @Test

@@ -10,6 +10,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -180,7 +181,7 @@ public class PolicyRecord {
 
     public void claim(String operator, Instant claimedAt) {
         this.claimedBy = operator;
-        this.claimedAt = claimedAt;
+        this.claimedAt = databaseTimestamp(claimedAt);
     }
 
     public void release() {
@@ -193,9 +194,13 @@ public class PolicyRecord {
             PolicyOutcome outcome, String reason, String operator, Instant decidedAt) {
         this.outcome = outcome;
         this.decidedBy = operator;
-        this.decidedAt = decidedAt;
+        this.decidedAt = databaseTimestamp(decidedAt);
         this.decisionReason = reason;
         release();
+    }
+
+    private static Instant databaseTimestamp(Instant value) {
+        return value.truncatedTo(ChronoUnit.MICROS);
     }
 
     public Instant getCreatedAt() {
