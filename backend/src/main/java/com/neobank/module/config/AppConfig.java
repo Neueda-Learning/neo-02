@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -20,8 +21,14 @@ import org.springframework.web.client.RestClient;
 public class AppConfig {
 
     @Bean
-    public RestClient restClient(RestClient.Builder builder) {
-        return builder.build();
+    public RestClient restClient(
+            RestClient.Builder builder,
+            @Value("${http.connect-timeout-ms:2000}") int connectTimeoutMs,
+            @Value("${http.read-timeout-ms:5000}") int readTimeoutMs) {
+        SimpleClientHttpRequestFactory requests = new SimpleClientHttpRequestFactory();
+        requests.setConnectTimeout(connectTimeoutMs);
+        requests.setReadTimeout(readTimeoutMs);
+        return builder.requestFactory(requests).build();
     }
 
     @Bean

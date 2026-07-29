@@ -217,6 +217,7 @@ Every knob is an env var, which is how one image serves as any slot:
 | `SERVICE_NAME` | `Customer Policy` | display name |
 | `SERVICE_DOMAIN` | `unassigned` | the BIAN domain you own, reported on `/info` |
 | `ORCHESTRATOR_URL` | `http://localhost:9000` | where callbacks go — see the three targets below |
+| `HTTP_CONNECT_TIMEOUT_MS` / `HTTP_READ_TIMEOUT_MS` | `2000` / `5000` | outbound orchestrator/registry connection and response timeouts |
 | `MOCKED_DEPENDENCIES` | *(empty)* | comma-separated systems you fake — the register, served live |
 | `WORKER_POOL_SIZE` | `8` | threads available to run your rules |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | see compose | this service's own schema |
