@@ -20,6 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.neobank.module.dto.ReasonCodeCountDto;
 import com.neobank.module.model.PolicyConfig;
+import com.neobank.module.model.PolicyOutcome;
 import com.neobank.module.service.PolicyConfigWriter;
 import com.neobank.module.service.ReasonCodeService;
 
@@ -48,21 +49,34 @@ class PolicyConfigRepositoryIT {
     @Autowired
     ReasonCodeService reasonCodes;
 
+    @Autowired
+    PolicyRecordRepository records;
+
     @Test
-    void uc05SeedProducesTheLockedReasonCodeCountsInTheFixedWindow() {
+    void freshDatabaseContainsOnlyTheFiveCuratedApplications() {
+        assertThat(records.count()).isEqualTo(5);
+        assertThat(records.findAll())
+                .extracting(record -> record.getApplicationId())
+                .containsExactlyInAnyOrder(
+                        "example_01", "example_02", "example_03", "example_04", "example_05");
+        assertThat(records.findById("example_03").orElseThrow().getOutcome())
+                .isEqualTo(PolicyOutcome.REJECTED);
+        assertThat(records.findAll().stream()
+                        .filter(record -> !"example_03".equals(record.getApplicationId()))
+                        .map(record -> record.getOutcome()))
+                .containsOnly(PolicyOutcome.APPROVED);
+        assertThat(records.findById("example_05").orElseThrow().getApplicantFullName())
+                .isEqualTo("Aisha Khan");
+
         assertThat(reasonCodes.countReasonCodes(
-                        LocalDate.parse("2026-07-01"),
-                        LocalDate.parse("2026-07-14")))
+                        LocalDate.parse("2026-07-25"),
+                        LocalDate.parse("2026-07-29")))
                 .extracting(
                         ReasonCodeCountDto::code,
                         ReasonCodeCountDto::count,
                         ReasonCodeCountDto::kind)
-                .containsExactly(
-                        org.assertj.core.api.Assertions.tuple("POL_SAMPLED_FOR_REVIEW", 26L, "review"),
-                        org.assertj.core.api.Assertions.tuple("POL_TAX_RESIDENCY_UNSUPPORTED", 4L, "rejection"),
-                        org.assertj.core.api.Assertions.tuple("POL_EXISTING_PRODUCT_HELD", 3L, "rejection"),
-                        org.assertj.core.api.Assertions.tuple("POL_TAX_RESIDENCY_EXCLUDED", 2L, "rejection"),
-                        org.assertj.core.api.Assertions.tuple("POL_CUSTOMER_BLOCKED", 1L, "rejection"));
+                .containsExactly(org.assertj.core.api.Assertions.tuple(
+                        "POL_TAX_RESIDENCY_EXCLUDED", 1L, "rejection"));
     }
 
     @Test

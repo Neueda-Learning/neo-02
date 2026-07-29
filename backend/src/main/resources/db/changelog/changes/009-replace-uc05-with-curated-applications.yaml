@@ -1,0 +1,133 @@
+# Replace the old 26-row UC05 analytics corpus with five operator-facing examples.
+# Four rows mirror the supplied Sidecar envelopes. example_05 is a generated clean policy path:
+# Aisha Khan, GB resident, GB + IE tax residencies, no existing product or restriction match.
+databaseChangeLog:
+  - changeSet:
+      id: 009-replace-uc05-with-curated-applications
+      author: neo-02
+      dbms: mysql
+      changes:
+        - sql:
+            sql: |
+              DELETE FROM override_log
+              WHERE application_id IN (
+                'UC05-01', 'UC05-02', 'UC05-03', 'UC05-04', 'UC05-05', 'UC05-06',
+                'UC05-07', 'UC05-08', 'UC05-09', 'UC05-10', 'UC05-11', 'UC05-12',
+                'UC05-13', 'UC05-14', 'UC05-15', 'UC05-16', 'UC05-17', 'UC05-18',
+                'UC05-19', 'UC05-20', 'UC05-21', 'UC05-22', 'UC05-23', 'UC05-24',
+                'UC05-25', 'UC05-26'
+              );
+
+              DELETE FROM policy_record
+              WHERE application_id IN (
+                'UC05-01', 'UC05-02', 'UC05-03', 'UC05-04', 'UC05-05', 'UC05-06',
+                'UC05-07', 'UC05-08', 'UC05-09', 'UC05-10', 'UC05-11', 'UC05-12',
+                'UC05-13', 'UC05-14', 'UC05-15', 'UC05-16', 'UC05-17', 'UC05-18',
+                'UC05-19', 'UC05-20', 'UC05-21', 'UC05-22', 'UC05-23', 'UC05-24',
+                'UC05-25', 'UC05-26'
+              );
+
+              INSERT IGNORE INTO policy_record (
+                application_id,
+                processing_status,
+                outcome,
+                machine_outcome,
+                reference,
+                applicant_full_name,
+                policy_config_version,
+                sampling_position,
+                rule_results,
+                decided_at,
+                submitted_at,
+                created_at,
+                updated_at,
+                lock_version
+              ) VALUES
+                (
+                  'example_01',
+                  'DECIDED',
+                  'APPROVED',
+                  'APPROVED',
+                  'pol-demo-example-01',
+                  'Maria Nowak',
+                  1,
+                  701,
+                  '[{"ruleName":"existingProduct","passed":true,"reasonCodes":[],"registryChecked":true},{"ruleName":"taxResidency","passed":true,"reasonCodes":[],"matchedList":"SUPPORTED"},{"ruleName":"restrictionList","passed":true,"reasonCodes":[]},{"ruleName":"sampling","passed":true,"reasonCodes":["POL_ALL_CHECKS_PASSED"],"sampled":false,"position":701}]',
+                  TIMESTAMP('2026-07-29 00:01:01'),
+                  TIMESTAMP('2026-07-29 00:00:01'),
+                  TIMESTAMP('2026-07-29 00:00:01'),
+                  TIMESTAMP('2026-07-29 00:01:01'),
+                  0
+                ),
+                (
+                  'example_02',
+                  'DECIDED',
+                  'APPROVED',
+                  'APPROVED',
+                  'pol-demo-example-02',
+                  'Liam Doyle',
+                  1,
+                  702,
+                  '[{"ruleName":"existingProduct","passed":true,"reasonCodes":[],"registryChecked":true},{"ruleName":"taxResidency","passed":true,"reasonCodes":[],"matchedList":"SUPPORTED"},{"ruleName":"restrictionList","passed":true,"reasonCodes":[]},{"ruleName":"sampling","passed":true,"reasonCodes":["POL_ALL_CHECKS_PASSED"],"sampled":false,"position":702}]',
+                  TIMESTAMP('2026-07-29 00:01:02'),
+                  TIMESTAMP('2026-07-29 00:00:02'),
+                  TIMESTAMP('2026-07-29 00:00:02'),
+                  TIMESTAMP('2026-07-29 00:01:02'),
+                  0
+                ),
+                (
+                  'example_03',
+                  'DECIDED',
+                  'REJECTED',
+                  'REJECTED',
+                  'pol-demo-example-03',
+                  'Grace Miller',
+                  1,
+                  703,
+                  '[{"ruleName":"existingProduct","passed":true,"reasonCodes":[],"registryChecked":true},{"ruleName":"taxResidency","passed":false,"reasonCodes":["POL_TAX_RESIDENCY_EXCLUDED"],"matchedList":"EXCLUDED"},{"ruleName":"restrictionList","passed":true,"reasonCodes":[]},{"ruleName":"sampling","passed":true,"reasonCodes":[],"sampled":false,"position":703}]',
+                  TIMESTAMP('2026-07-29 00:01:03'),
+                  TIMESTAMP('2026-07-29 00:00:03'),
+                  TIMESTAMP('2026-07-29 00:00:03'),
+                  TIMESTAMP('2026-07-29 00:01:03'),
+                  0
+                ),
+                (
+                  'example_04',
+                  'DECIDED',
+                  'APPROVED',
+                  'APPROVED',
+                  'pol-demo-example-04',
+                  'Jonas Meyer',
+                  1,
+                  704,
+                  '[{"ruleName":"existingProduct","passed":true,"reasonCodes":[],"registryChecked":true},{"ruleName":"taxResidency","passed":true,"reasonCodes":[],"matchedList":"SUPPORTED"},{"ruleName":"restrictionList","passed":true,"reasonCodes":[]},{"ruleName":"sampling","passed":true,"reasonCodes":["POL_ALL_CHECKS_PASSED"],"sampled":false,"position":704}]',
+                  TIMESTAMP('2026-07-29 00:01:04'),
+                  TIMESTAMP('2026-07-29 00:00:04'),
+                  TIMESTAMP('2026-07-29 00:00:04'),
+                  TIMESTAMP('2026-07-29 00:01:04'),
+                  0
+                ),
+                (
+                  'example_05',
+                  'DECIDED',
+                  'APPROVED',
+                  'APPROVED',
+                  'pol-demo-example-05',
+                  'Aisha Khan',
+                  1,
+                  705,
+                  '[{"ruleName":"existingProduct","passed":true,"reasonCodes":[],"registryChecked":true},{"ruleName":"taxResidency","passed":true,"reasonCodes":[],"matchedList":"SUPPORTED"},{"ruleName":"restrictionList","passed":true,"reasonCodes":[]},{"ruleName":"sampling","passed":true,"reasonCodes":["POL_ALL_CHECKS_PASSED"],"sampled":false,"position":705}]',
+                  TIMESTAMP('2026-07-29 00:01:05'),
+                  TIMESTAMP('2026-07-29 00:00:05'),
+                  TIMESTAMP('2026-07-29 00:00:05'),
+                  TIMESTAMP('2026-07-29 00:01:05'),
+                  0
+                );
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM policy_record
+              WHERE application_id IN (
+                'example_01', 'example_02', 'example_03', 'example_04', 'example_05'
+              )
+                AND reference LIKE 'pol-demo-%';
