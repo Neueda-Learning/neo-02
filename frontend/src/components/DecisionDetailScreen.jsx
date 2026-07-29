@@ -28,7 +28,11 @@ const RULE_LABELS = {
   sampling: 'Sampling',
 };
 
-export default function DecisionDetailScreen({ applicationId, onBack, backLabel = 'Back' }) {
+export default function DecisionDetailScreen({
+  applicationId,
+  onBack,
+  backLabel = 'Back to applications',
+}) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);

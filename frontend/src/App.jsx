@@ -14,7 +14,7 @@ const HEALTH_MS = 10000;
 export default function App() {
   const [screen, setScreen] = useState('applications');
   const [selectedCaseId, setSelectedCaseId] = useState(null);
-  const [caseReturnScreen, setCaseReturnScreen] = useState('applications');
+  const [detailReturnScreen, setDetailReturnScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
@@ -57,25 +57,13 @@ export default function App() {
     { id: 'patterns', label: 'Rejection Patterns' },
     { id: 'referrals', label: 'Referral Queue', hint: 'human review' },
     { id: 'cases', label: 'Search cases' },
-    {
-      id: 'decision',
-      label: 'Decision detail',
-      hint: selectedCaseId ?? 'select an application',
-      disabled: !selectedCaseId,
-    },
     { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
     { id: 'settings', label: 'Policy Config' },
   ];
 
-  const openCase = (row) => {
+  const openCase = (row, returnScreen) => {
     setSelectedCaseId(row.applicationId);
-    setCaseReturnScreen('applications');
-    setScreen('decision');
-  };
-
-  const openReferral = (row) => {
-    setSelectedCaseId(row.applicationId);
-    setCaseReturnScreen('referrals');
+    setDetailReturnScreen(returnScreen);
     setScreen('decision');
   };
 
@@ -88,7 +76,11 @@ export default function App() {
             product={info?.service ?? 'Module'}
             meta={info ? `${info.serviceId} | ${info.domain}` : undefined}
           />
-          <SideNav items={screens} active={screen} onSelect={setScreen} />
+          <SideNav
+            items={screens}
+            active={screen === 'decision' ? detailReturnScreen : screen}
+            onSelect={setScreen}
+          />
           <div className="app-side-status">
             <StatusPill tone={up ? 'positive' : 'negative'}>{up ? 'Up' : 'Down'}</StatusPill>
             <Button
@@ -107,20 +99,31 @@ export default function App() {
       footer="Customer Policy | applications arrive from the orchestrator"
     >
       {screen === 'applications' && (
-        <RequestsScreen requests={requests} error={error} info={info} onOpenCase={openCase} />
+        <RequestsScreen
+          requests={requests}
+          error={error}
+          info={info}
+          onOpenCase={(row) => openCase(row, 'applications')}
+        />
       )}
       {screen === 'patterns' && <RejectionPatternsScreen />}
-      {screen === 'referrals' && <ReferralQueueScreen onOpenCase={openReferral} />}
-      {screen === 'cases' && <CasesScreen info={info} />}
+      {screen === 'referrals' && (
+        <ReferralQueueScreen onOpenCase={(row) => openCase(row, 'referrals')} />
+      )}
+      {screen === 'cases' && (
+        <CasesScreen info={info} onOpenCase={(row) => openCase(row, 'cases')} />
+      )}
       {screen === 'decision' && selectedCaseId && (
         <DecisionDetailScreen
           applicationId={selectedCaseId}
-          onBack={() => setScreen(caseReturnScreen)}
           backLabel={
-            caseReturnScreen === 'referrals'
+            detailReturnScreen === 'referrals'
               ? 'Back to referral queue'
-              : 'Back to applications'
+              : detailReturnScreen === 'cases'
+                ? 'Back to search cases'
+                : 'Back to applications'
           }
+          onBack={() => setScreen(detailReturnScreen)}
         />
       )}
       {screen === 'settings' && <PolicyConfigScreen />}
