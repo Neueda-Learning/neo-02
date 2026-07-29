@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.neobank.module.dto.CaseSearchResult;
@@ -35,6 +36,7 @@ class ApplicationServiceTest {
     private RegistryLookupService registry;
     private PolicyRuleEngine rules;
     private OrchestratorClient orchestrator;
+    private ManualDecisionReporter manualDecisions;
     private List<Runnable> scheduled;
     private ApplicationService service;
 
@@ -47,6 +49,7 @@ class ApplicationServiceTest {
         registry = mock(RegistryLookupService.class);
         rules = mock(PolicyRuleEngine.class);
         orchestrator = mock(OrchestratorClient.class);
+        manualDecisions = mock(ManualDecisionReporter.class);
         scheduled = new ArrayList<>();
         service = service(scheduled::add);
     }
@@ -105,6 +108,28 @@ class ApplicationServiceTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void manuallyOverriddenDuplicateReplaysTheHumanCallback() {
+        PolicyRecord decided = decidedRecord("SIM-MANUAL");
+        decided.overrideOutcome(
+                PolicyOutcome.REJECTED,
+                "operator.one",
+                "manual correction",
+                java.time.Instant.parse("2026-07-29T02:00:00Z"));
+        when(writer.createIfAbsent("SIM-MANUAL")).thenReturn(false);
+        when(records.findById("SIM-MANUAL")).thenReturn(Optional.of(decided));
+
+        service.accept(request("SIM-MANUAL"));
+        scheduled.getFirst().run();
+
+        verify(manualDecisions).report(
+                "SIM-MANUAL",
+                PolicyOutcome.REJECTED,
+                "manual correction",
+                "operator.one");
+        verifyNoInteractions(orchestrator);
     }
 
     @Test
@@ -184,7 +209,15 @@ class ApplicationServiceTest {
 
     private ApplicationService service(Executor executor) {
         return new ApplicationService(
-                executor, writer, records, decisions, configs, registry, rules, orchestrator);
+                executor,
+                writer,
+                records,
+                decisions,
+                configs,
+                registry,
+                rules,
+                orchestrator,
+                manualDecisions);
     }
 
     private static ApplicationRequest request(String id) {

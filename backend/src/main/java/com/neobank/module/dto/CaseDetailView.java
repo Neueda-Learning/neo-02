@@ -15,7 +15,8 @@ public record CaseDetailView(
         String decidedBy,
         Instant decidedAt,
         String decisionReason,
-        List<OverrideLogView> overrides) {
+        List<OverrideLogView> overrides,
+        long lockVersion) {
 
     /** Keeps the original UC02 construction shape available to focused controller tests. */
     public CaseDetailView(
@@ -33,7 +34,32 @@ public record CaseDetailView(
                 null,
                 null,
                 null,
-                List.of());
+                List.of(),
+                0);
+    }
+
+    /** Convenience shape for focused tests that do not exercise optimistic concurrency. */
+    public CaseDetailView(
+            String outcome,
+            String machineOutcome,
+            String reference,
+            Integer policyConfigVersion,
+            List<RuleResult> ruleResults,
+            String decidedBy,
+            Instant decidedAt,
+            String decisionReason,
+            List<OverrideLogView> overrides) {
+        this(
+                outcome,
+                machineOutcome,
+                reference,
+                policyConfigVersion,
+                ruleResults,
+                decidedBy,
+                decidedAt,
+                decisionReason,
+                overrides,
+                0);
     }
 
     public CaseDetailView {
@@ -57,6 +83,7 @@ public record CaseDetailView(
                 record.getDecidedBy(),
                 record.getDecidedAt(),
                 record.getDecisionReason(),
-                overrides);
+                overrides,
+                record.getLockVersion());
     }
 }

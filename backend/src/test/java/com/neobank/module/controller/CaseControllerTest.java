@@ -127,7 +127,7 @@ class CaseControllerTest {
                 PolicyOutcome.APPROVED,
                 "registry entry stale",
                 "b.dimovski");
-        when(overrides.override("app-1242", request)).thenReturn(new CaseDetailView(
+        when(overrides.override("app-1242", request, 7L)).thenReturn(new CaseDetailView(
                 "APPROVED",
                 "REJECTED",
                 "pol-000216",
@@ -139,6 +139,7 @@ class CaseControllerTest {
                 List.of()));
 
         mvc.perform(post("/cases/app-1242/override")
+                        .header("X-Expected-Version", 7)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -157,6 +158,7 @@ class CaseControllerTest {
     @Test
     void overrideRequiresReasonAndOperator() throws Exception {
         mvc.perform(post("/cases/app-1242/override")
+                        .header("X-Expected-Version", 7)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"newOutcome": "APPROVED", "reason": " ", "operator": ""}
@@ -168,6 +170,7 @@ class CaseControllerTest {
     @Test
     void overrideRejectsAnUnknownOutcome() throws Exception {
         mvc.perform(post("/cases/app-1242/override")
+                        .header("X-Expected-Version", 7)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -188,10 +191,12 @@ class CaseControllerTest {
                 new OverrideCaseRequest(
                         PolicyOutcome.APPROVED,
                         "different reason",
-                        "b.dimovski")))
+                        "b.dimovski"),
+                7L))
                 .thenThrow(new CaseConflictException("stale override"));
 
         mvc.perform(post("/cases/app-1242/override")
+                        .header("X-Expected-Version", 7)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -203,6 +208,20 @@ class CaseControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.message").value("stale override"));
+    }
+
+    @Test
+    void overrideRequiresAnExpectedVersionHeader() throws Exception {
+        mvc.perform(post("/cases/app-1242/override")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newOutcome": "APPROVED",
+                                  "reason": "registry entry stale",
+                                  "operator": "b.dimovski"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     private static ApplicantView applicant() {

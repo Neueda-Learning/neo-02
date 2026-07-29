@@ -38,9 +38,13 @@ export const api = {
       : request('/api/v1/applications'),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   getApplicant: (id) => request(`/cases/${encodeURIComponent(id)}/applicant`),
-  overrideCase: (id, body) =>
+  overrideCase: (id, body, expectedVersion) =>
     request(`/cases/${encodeURIComponent(id)}/override`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Expected-Version': String(expectedVersion),
+      },
       body: JSON.stringify(body),
     }),
   listConfigVersions: () => request('/config/versions'),

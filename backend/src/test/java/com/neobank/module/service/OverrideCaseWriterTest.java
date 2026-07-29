@@ -47,12 +47,14 @@ class OverrideCaseWriterTest {
     @Test
     void updatesTheEffectiveOutcomeAndAppendsAuditWithoutTouchingMachineEvidence() {
         decidedCase("OVERRIDE-1", PolicyOutcome.REJECTED);
+        long expectedVersion = version("OVERRIDE-1");
 
         OverrideCaseWriter.OverrideResult result = writer.apply(
                 "OVERRIDE-1",
                 PolicyOutcome.APPROVED,
                 "registry entry stale",
-                "b.dimovski");
+                "b.dimovski",
+                expectedVersion);
         entityManager.clear();
 
         PolicyRecord updated = records.findById("OVERRIDE-1").orElseThrow();
@@ -76,17 +78,20 @@ class OverrideCaseWriterTest {
     @Test
     void exactRetryIsAnIdempotentNoOp() {
         decidedCase("OVERRIDE-RETRY", PolicyOutcome.REJECTED);
+        long expectedVersion = version("OVERRIDE-RETRY");
         writer.apply(
                 "OVERRIDE-RETRY",
                 PolicyOutcome.APPROVED,
                 "registry entry stale",
-                "b.dimovski");
+                "b.dimovski",
+                expectedVersion);
 
         OverrideCaseWriter.OverrideResult retry = writer.apply(
                 "OVERRIDE-RETRY",
                 PolicyOutcome.APPROVED,
                 "registry entry stale",
-                "b.dimovski");
+                "b.dimovski",
+                expectedVersion);
 
         assertThat(retry.changed()).isFalse();
         assertThat(overrides.findByApplicationIdOrderByOverriddenAtAscIdAsc("OVERRIDE-RETRY"))
@@ -96,17 +101,21 @@ class OverrideCaseWriterTest {
     @Test
     void sameOutcomeWithDifferentEvidenceIsAConflict() {
         decidedCase("OVERRIDE-CONFLICT", PolicyOutcome.REJECTED);
+        long expectedVersion = version("OVERRIDE-CONFLICT");
         writer.apply(
                 "OVERRIDE-CONFLICT",
                 PolicyOutcome.APPROVED,
                 "first reason",
-                "first.operator");
+                "first.operator",
+                expectedVersion);
+        long currentVersion = version("OVERRIDE-CONFLICT");
 
         assertThatThrownBy(() -> writer.apply(
                 "OVERRIDE-CONFLICT",
                 PolicyOutcome.APPROVED,
                 "different reason",
-                "second.operator"))
+                "second.operator",
+                currentVersion))
                 .isInstanceOf(CaseConflictException.class)
                 .hasMessageContaining("different decision");
         assertThat(overrides.findByApplicationIdOrderByOverriddenAtAscIdAsc("OVERRIDE-CONFLICT"))
@@ -121,7 +130,8 @@ class OverrideCaseWriterTest {
                 "OVERRIDE-PENDING",
                 PolicyOutcome.APPROVED,
                 "too early",
-                "b.dimovski"))
+                "b.dimovski",
+                0L))
                 .isInstanceOf(CaseConflictException.class)
                 .hasMessageContaining("still in progress");
         assertThat(overrides.count()).isZero();
@@ -133,9 +143,81 @@ class OverrideCaseWriterTest {
                 "MISSING",
                 PolicyOutcome.APPROVED,
                 "not found",
-                "b.dimovski"))
+                "b.dimovski",
+                0L))
                 .isInstanceOf(CaseNotFoundException.class);
         assertThat(overrides.count()).isZero();
+    }
+
+    @Test
+    void referredCaseMustGoThroughTheClaimedQueue() {
+        decidedCase("OVERRIDE-REFERRED", PolicyOutcome.REFERRED);
+
+        assertThatThrownBy(() -> writer.apply(
+                "OVERRIDE-REFERRED",
+                PolicyOutcome.APPROVED,
+                "queue bypass",
+                "b.dimovski",
+                version("OVERRIDE-REFERRED")))
+                .isInstanceOf(CaseConflictException.class)
+                .hasMessageContaining("claimed queue");
+        assertThat(overrides.count()).isZero();
+    }
+
+    @Test
+    void exactRetryToReferredRemainsIdempotent() {
+        decidedCase("OVERRIDE-TO-REFERRED", PolicyOutcome.APPROVED);
+        long expectedVersion = version("OVERRIDE-TO-REFERRED");
+        writer.apply(
+                "OVERRIDE-TO-REFERRED",
+                PolicyOutcome.REFERRED,
+                "manual review required",
+                "b.dimovski",
+                expectedVersion);
+
+        OverrideCaseWriter.OverrideResult retry = writer.apply(
+                "OVERRIDE-TO-REFERRED",
+                PolicyOutcome.REFERRED,
+                "manual review required",
+                "b.dimovski",
+                expectedVersion);
+
+        assertThat(retry.changed()).isFalse();
+        assertThat(overrides.findByApplicationIdOrderByOverriddenAtAscIdAsc(
+                "OVERRIDE-TO-REFERRED")).hasSize(1);
+    }
+
+    @Test
+    void delayedRetryCannotOverwriteANewerHumanDecision() {
+        decidedCase("OVERRIDE-STALE", PolicyOutcome.REJECTED);
+        long originalVersion = version("OVERRIDE-STALE");
+        writer.apply(
+                "OVERRIDE-STALE",
+                PolicyOutcome.APPROVED,
+                "first correction",
+                "operator.one",
+                originalVersion);
+        writer.apply(
+                "OVERRIDE-STALE",
+                PolicyOutcome.REJECTED,
+                "second correction",
+                "operator.two",
+                version("OVERRIDE-STALE"));
+
+        assertThatThrownBy(() -> writer.apply(
+                "OVERRIDE-STALE",
+                PolicyOutcome.APPROVED,
+                "first correction",
+                "operator.one",
+                originalVersion))
+                .isInstanceOf(CaseConflictException.class)
+                .hasMessageContaining("changed after version");
+
+        entityManager.clear();
+        assertThat(records.findById("OVERRIDE-STALE").orElseThrow().getOutcome())
+                .isEqualTo(PolicyOutcome.REJECTED);
+        assertThat(overrides.findByApplicationIdOrderByOverriddenAtAscIdAsc("OVERRIDE-STALE"))
+                .hasSize(2);
     }
 
     private void decidedCase(String applicationId, PolicyOutcome machineOutcome) {
@@ -152,5 +234,10 @@ class OverrideCaseWriterTest {
                                 ? List.of("POL_EXISTING_PRODUCT_HELD")
                                 : List.of()))));
         records.saveAndFlush(record);
+    }
+
+    private long version(String applicationId) {
+        entityManager.clear();
+        return records.findById(applicationId).orElseThrow().getLockVersion();
     }
 }

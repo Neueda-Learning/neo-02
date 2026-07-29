@@ -1,8 +1,10 @@
 package com.neobank.module.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,10 +43,11 @@ class OverrideCaseServiceTest {
                 "app-1242",
                 PolicyOutcome.APPROVED,
                 "stale registry",
-                "b.dimovski")).thenReturn(result);
+                "b.dimovski",
+                7L)).thenReturn(result);
         when(cases.find("app-1242")).thenReturn(detail);
 
-        assertThat(service.override("app-1242", request)).isSameAs(detail);
+        assertThat(service.override("app-1242", request, 7L)).isSameAs(detail);
 
         verify(reporter).report(
                 "app-1242",
@@ -55,14 +58,15 @@ class OverrideCaseServiceTest {
     }
 
     @Test
-    void exactRetryDoesNotSendASecondCallback() {
+    void exactRetryReissuesTheIdempotentCallback() {
         OverrideCaseRequest request =
                 new OverrideCaseRequest(PolicyOutcome.APPROVED, "stale registry", "b.dimovski");
         when(writer.apply(
                 "app-1242",
                 PolicyOutcome.APPROVED,
                 "stale registry",
-                "b.dimovski"))
+                "b.dimovski",
+                7L))
                 .thenReturn(new OverrideResult(
                         false,
                         PolicyOutcome.APPROVED,
@@ -72,12 +76,50 @@ class OverrideCaseServiceTest {
                 .thenReturn(new CaseDetailView(
                         "APPROVED", "REJECTED", "pol-1", 1, List.of()));
 
-        service.override("app-1242", request);
+        service.override("app-1242", request, 7L);
 
-        verify(reporter, never()).report(
+        verify(reporter).report(
                 "app-1242",
                 PolicyOutcome.APPROVED,
                 "stale registry",
                 "b.dimovski");
+    }
+
+    @Test
+    void exactRetryRecoversAfterTheFirstCallbackTransportFailure() {
+        OverrideCaseRequest request =
+                new OverrideCaseRequest(PolicyOutcome.APPROVED, "stale registry", "b.dimovski");
+        OverrideResult changed =
+                new OverrideResult(true, PolicyOutcome.APPROVED, "stale registry", "b.dimovski");
+        OverrideResult duplicate =
+                new OverrideResult(false, PolicyOutcome.APPROVED, "stale registry", "b.dimovski");
+        CaseDetailView detail =
+                new CaseDetailView("APPROVED", "REJECTED", "pol-1", 1, List.of());
+        when(writer.apply(
+                "app-1242",
+                PolicyOutcome.APPROVED,
+                "stale registry",
+                "b.dimovski",
+                7L)).thenReturn(changed, duplicate);
+        doThrow(new IllegalStateException("transport failed"))
+                .doNothing()
+                .when(reporter)
+                .report(
+                        "app-1242",
+                        PolicyOutcome.APPROVED,
+                        "stale registry",
+                        "b.dimovski");
+        when(cases.find("app-1242")).thenReturn(detail);
+
+        assertThatThrownBy(() -> service.override("app-1242", request, 7L))
+                .hasMessage("transport failed");
+        assertThat(service.override("app-1242", request, 7L)).isSameAs(detail);
+
+        verify(reporter, times(2)).report(
+                "app-1242",
+                PolicyOutcome.APPROVED,
+                "stale registry",
+                "b.dimovski");
+        verify(cases).find("app-1242");
     }
 }

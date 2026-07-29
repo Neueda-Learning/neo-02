@@ -96,9 +96,9 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
     );
   }
 
-  const decided = Boolean(detail.outcome);
+  const overrideAllowed = ['APPROVED', 'REJECTED'].includes(detail.outcome);
   const applyOverride = async (command) => {
-    const updated = await api.overrideCase(applicationId, command);
+    const updated = await api.overrideCase(applicationId, command, detail.lockVersion);
     setDetail(updated);
     setOverrideNotice(
       `Decision changed to ${updated.outcome}. The audit entry is permanent and the orchestrator status update was issued.`
@@ -118,7 +118,7 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         meta={`${applicationId} | ${detail.reference}`}
         actions={
           <Stack row gap={2}>
-            {decided && (
+            {overrideAllowed && (
               <Button variant="primary" onClick={() => setOverrideOpen(true)}>
                 Override decision…
               </Button>
@@ -134,7 +134,7 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         </Alert>
       )}
 
-      {!decided && (
+      {!detail.outcome && (
         <Alert tone="info" title="Decision in progress">
           The case is durable. This screen will update when the worker stores its result.
         </Alert>
@@ -318,7 +318,7 @@ function OverrideDecisionModal({ open, currentOutcome, onClose, onSubmit }) {
           <Field
             label="Reason"
             required
-            hint="Explain why the stored decision is wrong. This text is retained permanently."
+            hint="Explain why the stored decision is wrong. This text is retained permanently; do not enter applicant PII."
             error={errors.reason}
           >
             {({ id, invalid, describedBy }) => (
@@ -352,7 +352,7 @@ function OverrideDecisionModal({ open, currentOutcome, onClose, onSubmit }) {
           <FormActions>
             <Caption>
               Repeating this exact command is safe: it will not create another audit entry or
-              callback.
+              change the decision again; the idempotent status callback is reissued.
             </Caption>
           </FormActions>
         </Stack>

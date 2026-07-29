@@ -36,6 +36,7 @@ public class ApplicationService {
     private final RegistryLookupService registry;
     private final PolicyRuleEngine rules;
     private final OrchestratorClient orchestrator;
+    private final ManualDecisionReporter manualDecisions;
 
     public ApplicationService(@Qualifier("applicationTaskExecutor") Executor executor,
                               PolicyRecordWriter writer,
@@ -44,7 +45,8 @@ public class ApplicationService {
                               PolicyConfigReader configs,
                               RegistryLookupService registry,
                               PolicyRuleEngine rules,
-                              OrchestratorClient orchestrator) {
+                              OrchestratorClient orchestrator,
+                              ManualDecisionReporter manualDecisions) {
         this.executor = executor;
         this.writer = writer;
         this.records = records;
@@ -53,6 +55,7 @@ public class ApplicationService {
         this.registry = registry;
         this.rules = rules;
         this.orchestrator = orchestrator;
+        this.manualDecisions = manualDecisions;
     }
 
     /**
@@ -117,6 +120,14 @@ public class ApplicationService {
     }
 
     private void reportStored(PolicyRecord record) {
+        if (record.getDecidedBy() != null && record.getDecisionReason() != null) {
+            manualDecisions.report(
+                    record.getApplicationId(),
+                    record.getOutcome(),
+                    record.getDecisionReason(),
+                    record.getDecidedBy());
+            return;
+        }
         report(record.getApplicationId(), record.getOutcome(),
                 record.getRuleResults().stream()
                         .flatMap(rule -> rule.reasonCodes().stream())

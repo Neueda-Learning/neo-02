@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,7 +46,8 @@ public class CaseController {
     @PostMapping("/{applicationId}/override")
     public CaseDetailView override(
             @PathVariable String applicationId,
+            @RequestHeader("X-Expected-Version") long expectedVersion,
             @Valid @RequestBody OverrideCaseRequest request) {
-        return overrides.override(applicationId, request);
+        return overrides.override(applicationId, request, expectedVersion);
     }
 }

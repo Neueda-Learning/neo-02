@@ -64,12 +64,15 @@ class OverrideLogRepositoryIT {
                         true,
                         List.of("POL_EXISTING_PRODUCT_HELD")))));
         records.saveAndFlush(record);
+        long expectedVersion =
+                records.findById("MYSQL-OVERRIDE").orElseThrow().getLockVersion();
 
         writer.apply(
                 "MYSQL-OVERRIDE",
                 PolicyOutcome.APPROVED,
                 "registry entry stale",
-                "b.dimovski");
+                "b.dimovski",
+                expectedVersion);
         entityManager.clear();
 
         PolicyRecord updated = records.findById("MYSQL-OVERRIDE").orElseThrow();

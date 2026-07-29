@@ -29,7 +29,8 @@ public class OverrideCaseWriter {
             String applicationId,
             PolicyOutcome newOutcome,
             String reason,
-            String operator) {
+            String operator,
+            long expectedVersion) {
         PolicyRecord record = records.findForUpdate(applicationId)
                 .orElseThrow(() -> new CaseNotFoundException(applicationId));
         if (!record.isDecided() || record.getOutcome() == null) {
@@ -37,9 +38,32 @@ public class OverrideCaseWriter {
                     "Policy case %s is still in progress and cannot be overridden"
                             .formatted(applicationId));
         }
-
+        if (record.getLockVersion() != expectedVersion) {
+            return duplicateOrConflict(
+                    record,
+                    newOutcome,
+                    reason,
+                    operator,
+                    "Policy case %s changed after version %d; reload before overriding"
+                            .formatted(applicationId, expectedVersion));
+        }
+        if (record.getOutcome() == PolicyOutcome.REFERRED) {
+            return duplicateOrConflict(
+                    record,
+                    newOutcome,
+                    reason,
+                    operator,
+                    "Policy case %s is referred and must be decided through the claimed queue"
+                            .formatted(applicationId));
+        }
         if (record.getOutcome() == newOutcome) {
-            return duplicateOrConflict(applicationId, newOutcome, reason, operator);
+            return duplicateOrConflict(
+                    record,
+                    newOutcome,
+                    reason,
+                    operator,
+                    "Policy case %s already has outcome %s from a different decision"
+                            .formatted(applicationId, newOutcome));
         }
 
         PolicyOutcome oldOutcome = record.getOutcome();
@@ -58,12 +82,17 @@ public class OverrideCaseWriter {
     }
 
     private OverrideResult duplicateOrConflict(
-            String applicationId,
+            PolicyRecord record,
             PolicyOutcome newOutcome,
             String reason,
-            String operator) {
+            String operator,
+            String conflictMessage) {
+        String applicationId = record.getApplicationId();
         boolean exactDuplicate = overrides
                 .findFirstByApplicationIdOrderByOverriddenAtDescIdDesc(applicationId)
+                .filter(log -> record.getOutcome() == newOutcome)
+                .filter(log -> Objects.equals(record.getDecisionReason(), reason))
+                .filter(log -> Objects.equals(record.getDecidedBy(), operator))
                 .filter(log -> log.getNewOutcome() == newOutcome)
                 .filter(log -> Objects.equals(log.getReason(), reason))
                 .filter(log -> Objects.equals(log.getOperator(), operator))
@@ -71,9 +100,7 @@ public class OverrideCaseWriter {
         if (exactDuplicate) {
             return new OverrideResult(false, newOutcome, reason, operator);
         }
-        throw new CaseConflictException(
-                "Policy case %s already has outcome %s from a different decision"
-                        .formatted(applicationId, newOutcome));
+        throw new CaseConflictException(conflictMessage);
     }
 
     public record OverrideResult(

@@ -77,8 +77,11 @@ class Uc06OverrideE2ETest {
 
     @Test
     void overrideIsAuditedIdempotentAndKeepsTheMachineDecision() throws Exception {
+        long expectedVersion =
+                records.findById("app-1242").orElseThrow().getLockVersion();
         for (int attempt = 0; attempt < 2; attempt++) {
             mvc.perform(post("/cases/app-1242/override")
+                            .header("X-Expected-Version", expectedVersion)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(COMMAND))
                     .andExpect(status().isOk())
@@ -88,12 +91,13 @@ class Uc06OverrideE2ETest {
                     .andExpect(jsonPath("$.decidedBy").value("b.dimovski"))
                     .andExpect(jsonPath("$.decisionReason").value(
                             "registry entry stale - card closed in May"))
+                    .andExpect(jsonPath("$.lockVersion").value(expectedVersion + 1))
                     .andExpect(jsonPath("$.overrides.length()").value(1))
                     .andExpect(jsonPath("$.overrides[0].oldOutcome").value("REJECTED"))
                     .andExpect(jsonPath("$.overrides[0].newOutcome").value("APPROVED"));
         }
 
-        verify(orchestrator, times(1)).applicationStatusUpdate(
+        verify(orchestrator, times(2)).applicationStatusUpdate(
                 "app-1242",
                 Decision.ACCEPTED,
                 "POL_MANUAL_APPROVED: registry entry stale - card closed in May "
