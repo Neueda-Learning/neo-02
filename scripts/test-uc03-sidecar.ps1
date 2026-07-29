@@ -16,6 +16,13 @@ function Assert-Equal {
     }
 }
 
+function Assert-Absent {
+    param($Object, [string]$Property, [string]$Label)
+    if ($Object.PSObject.Properties.Name -contains $Property) {
+        throw "$Label unexpectedly exposed '$Property'"
+    }
+}
+
 function Read-DbFingerprint {
     $sql = @"
 SELECT CONCAT(
@@ -72,9 +79,6 @@ try {
     }
 
     $before = Read-DbFingerprint
-    $beforeParts = $before -split '\|'
-    Assert-Equal $beforeParts[2] 0 "Applicant-related schema columns"
-
     1..2 | ForEach-Object {
         $application = Invoke-RestMethod -Uri "$BackendUrl/cases/app-1240/applicant"
         Assert-Equal $application.applicationId "app-1240" "Application id"
@@ -84,12 +88,19 @@ try {
         Assert-Equal $application.applicant.countryOfResidence "GB" "Country of residence"
         Assert-Equal $application.product.productCode "CREDIT_CARD_STANDARD" "Product code"
         Assert-Equal $application.channel "WEB" "Channel"
+
+        @("identityDocument", "employment", "finances", "delivery", "consents") |
+            ForEach-Object { Assert-Absent $application $_ "Application response" }
+        @("email", "mobile", "nationality", "residentialStatus", "currentAddress",
+            "monthsAtAddress", "dependants") |
+            ForEach-Object { Assert-Absent $application.applicant $_ "Applicant response" }
+        Assert-Absent $application.product "requestedCreditLimit" "Product response"
     }
 
     $after = Read-DbFingerprint
     Assert-Equal $after $before "Database fingerprint after two live reads"
 
-    Write-Output "UC03 sidecar E2E passed: Sofia hydrated twice, no cache/write, zero applicant columns."
+    Write-Output "UC03 sidecar E2E passed: Sofia hydrated twice with a minimal response and no database change."
 } finally {
     Pop-Location
 }

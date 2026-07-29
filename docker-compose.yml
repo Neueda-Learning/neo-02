@@ -47,6 +47,8 @@ services:
       # you can see BOTH halves of the contract. Point this at http://orchestrator:8080 to talk
       # to the real one instead — nothing else in the module changes.
       ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://sidecar:8080}
+      HTTP_CONNECT_TIMEOUT_MS: ${HTTP_CONNECT_TIMEOUT_MS:-2000}
+      HTTP_READ_TIMEOUT_MS: ${HTTP_READ_TIMEOUT_MS:-5000}
       # v1 sidecar has no Registry endpoint. Keep the local James Whitfield fixture explicit;
       # integration/prod set http plus the instructor-published URI template.
       REGISTRY_MODE: ${REGISTRY_MODE:-in-memory}

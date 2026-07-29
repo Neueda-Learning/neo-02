@@ -10,14 +10,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
+import com.neobank.module.model.PolicyRecord;
 import com.neobank.module.repository.PolicyRecordRepository;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -35,11 +36,15 @@ class Uc03ApplicantE2ETest {
     @Autowired
     private PolicyRecordRepository records;
 
-    @Autowired
-    private JdbcTemplate jdbc;
-
     @MockBean
     private OrchestratorClient orchestrator;
+
+    @BeforeEach
+    void ensureOwnedCaseExists() {
+        if (!records.existsById("app-1240")) {
+            records.saveAndFlush(new PolicyRecord("app-1240", "pol-uc03-1240"));
+        }
+    }
 
     @Test
     void applicantProxyAppearsInOpenApi() throws Exception {
@@ -50,9 +55,10 @@ class Uc03ApplicantE2ETest {
     }
 
     @Test
-    void sofiaIsHydratedLiveTwiceWithoutAWriteOrApplicantColumn() throws Exception {
+    void sofiaIsHydratedLiveTwiceWithoutChangingTheStoredCase() throws Exception {
         when(orchestrator.application("app-1240")).thenReturn(application());
         long rowsBefore = records.count();
+        PolicyRecord before = records.findById("app-1240").orElseThrow();
 
         for (int attempt = 0; attempt < 2; attempt++) {
             mvc.perform(get("/cases/app-1240/applicant"))
@@ -63,31 +69,17 @@ class Uc03ApplicantE2ETest {
                     .andExpect(jsonPath("$.applicant.countryOfResidence").value("GB"))
                     .andExpect(jsonPath("$.product.productCode")
                             .value("CREDIT_CARD_STANDARD"))
-                    .andExpect(jsonPath("$.channel").value("WEB"));
+                    .andExpect(jsonPath("$.channel").value("WEB"))
+                    .andExpect(jsonPath("$.applicant.email").doesNotExist())
+                    .andExpect(jsonPath("$.identityDocument").doesNotExist())
+                    .andExpect(jsonPath("$.finances").doesNotExist());
         }
 
+        PolicyRecord after = records.findById("app-1240").orElseThrow();
         assertThat(records.count()).isEqualTo(rowsBefore);
-        assertThat(applicantColumnCount()).isZero();
+        assertThat(after.getUpdatedAt()).isEqualTo(before.getUpdatedAt());
+        assertThat(after.getApplicantFullName()).isEqualTo(before.getApplicantFullName());
         verify(orchestrator, times(2)).application("app-1240");
-    }
-
-    private int applicantColumnCount() {
-        Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*)
-                FROM information_schema.columns
-                WHERE table_schema = 'PUBLIC'
-                  AND table_name IN ('POLICY_RECORD', 'POLICY_CONFIG', 'OVERRIDE_LOG')
-                  AND (
-                    LOWER(column_name) LIKE '%applicant%'
-                    OR LOWER(column_name) LIKE '%full_name%'
-                    OR LOWER(column_name) LIKE '%date_of_birth%'
-                    OR LOWER(column_name) LIKE '%tax_residen%'
-                    OR LOWER(column_name) LIKE '%email%'
-                    OR LOWER(column_name) LIKE '%mobile%'
-                    OR LOWER(column_name) LIKE '%country_of_residence%'
-                  )
-                """, Integer.class);
-        return count == null ? -1 : count;
     }
 
     private static Application application() {

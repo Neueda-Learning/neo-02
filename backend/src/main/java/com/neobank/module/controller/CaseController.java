@@ -1,7 +1,7 @@
 package com.neobank.module.controller;
 
+import com.neobank.module.dto.ApplicantView;
 import com.neobank.module.dto.CaseDetailView;
-import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.service.ApplicantService;
 import com.neobank.module.service.CaseDetailService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,7 +28,7 @@ public class CaseController {
     }
 
     @GetMapping("/{applicationId}/applicant")
-    public Application applicant(@PathVariable String applicationId) {
+    public ApplicantView applicant(@PathVariable String applicationId) {
         return applicants.find(applicationId);
     }
 }

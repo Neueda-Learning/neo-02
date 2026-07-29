@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neobank.module.dto.CaseDetailView;
-import com.neobank.module.integrations.orchestrator.Application;
+import com.neobank.module.dto.ApplicantView;
 import com.neobank.module.model.RuleResult;
 import com.neobank.module.service.ApplicantService;
 import com.neobank.module.service.ApplicantUnavailableException;
@@ -68,7 +68,7 @@ class CaseControllerTest {
 
     @Test
     void proxiesTheLiveApplicantApplication() throws Exception {
-        when(applicants.find("app-1240")).thenReturn(application());
+        when(applicants.find("app-1240")).thenReturn(applicant());
 
         mvc.perform(get("/cases/app-1240/applicant"))
                 .andExpect(status().isOk())
@@ -78,7 +78,15 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.applicant.countryOfResidence").value("GB"))
                 .andExpect(jsonPath("$.applicant.taxResidencies[0]").value("GB"))
                 .andExpect(jsonPath("$.applicant.taxResidencies[1]").value("US"))
-                .andExpect(jsonPath("$.product.productCode").value("CREDIT_CARD_STANDARD"));
+                .andExpect(jsonPath("$.product.productCode").value("CREDIT_CARD_STANDARD"))
+                .andExpect(jsonPath("$.applicant.email").doesNotExist())
+                .andExpect(jsonPath("$.applicant.mobile").doesNotExist())
+                .andExpect(jsonPath("$.identityDocument").doesNotExist())
+                .andExpect(jsonPath("$.employment").doesNotExist())
+                .andExpect(jsonPath("$.finances").doesNotExist())
+                .andExpect(jsonPath("$.delivery").doesNotExist())
+                .andExpect(jsonPath("$.consents").doesNotExist())
+                .andExpect(jsonPath("$.product.requestedCreditLimit").doesNotExist());
     }
 
     @Test
@@ -93,28 +101,26 @@ class CaseControllerTest {
                         org.hamcrest.Matchers.containsString("Retry")));
     }
 
-    private static Application application() {
-        return new Application(
+    @Test
+    void unknownApplicantCaseReturnsJson404() throws Exception {
+        when(applicants.find("not-ours")).thenThrow(new CaseNotFoundException("not-ours"));
+
+        mvc.perform(get("/cases/not-ours/applicant"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("not-ours")));
+    }
+
+    private static ApplicantView applicant() {
+        return new ApplicantView(
                 "app-1240",
                 "WEB",
-                "2026-07-25T09:14:00Z",
-                new Application.Applicant(
+                new ApplicantView.Applicant(
                         "Sofia Ruiz",
                         "1991-05-20",
-                        null,
-                        null,
-                        "ESP",
-                        "GB",
                         List.of("GB", "US"),
-                        null,
-                        null,
-                        null,
-                        null),
-                null,
-                null,
-                null,
-                new Application.Product("CREDIT_CARD_STANDARD", 2000),
-                null,
-                null);
+                        "GB"),
+                new ApplicantView.Product("CREDIT_CARD_STANDARD"));
     }
 }
