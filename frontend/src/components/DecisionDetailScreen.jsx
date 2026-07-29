@@ -25,7 +25,11 @@ const RULE_LABELS = {
   sampling: 'Sampling',
 };
 
-export default function DecisionDetailScreen({ applicationId, onBack }) {
+export default function DecisionDetailScreen({
+  applicationId,
+  onBack,
+  backLabel = 'Back to applications',
+}) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
 
@@ -61,7 +65,7 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         <PageHeader
           title="Decision detail"
           meta={applicationId}
-          actions={<Button onClick={onBack}>Back to applications</Button>}
+          actions={<Button onClick={onBack}>{backLabel}</Button>}
         />
         <Alert tone="negative" title="Could not load this case">
           {error.message}
@@ -76,7 +80,7 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         <PageHeader
           title="Decision detail"
           meta={applicationId}
-          actions={<Button onClick={onBack}>Back to applications</Button>}
+          actions={<Button onClick={onBack}>{backLabel}</Button>}
         />
         <div className="decision-loading">
           <Spinner size="lg" label="Loading policy decision" />
@@ -97,7 +101,7 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         }
         lede="stored decision and rule evidence"
         meta={`${applicationId} | ${detail.reference}`}
-        actions={<Button onClick={onBack}>Back to applications</Button>}
+        actions={<Button onClick={onBack}>{backLabel}</Button>}
       />
 
       {!decided && (
