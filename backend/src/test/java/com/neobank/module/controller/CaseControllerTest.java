@@ -6,7 +6,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neobank.module.dto.CaseDetailView;
+import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.model.RuleResult;
+import com.neobank.module.service.ApplicantService;
+import com.neobank.module.service.ApplicantUnavailableException;
 import com.neobank.module.service.CaseDetailService;
 import com.neobank.module.service.CaseNotFoundException;
 import java.util.List;
@@ -24,6 +27,9 @@ class CaseControllerTest {
 
     @MockBean
     private CaseDetailService cases;
+
+    @MockBean
+    private ApplicantService applicants;
 
     @Test
     void returnsTheStoredDecisionAndFourRuleSections() throws Exception {
@@ -58,5 +64,57 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("missing")));
+    }
+
+    @Test
+    void proxiesTheLiveApplicantApplication() throws Exception {
+        when(applicants.find("app-1240")).thenReturn(application());
+
+        mvc.perform(get("/cases/app-1240/applicant"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applicationId").value("app-1240"))
+                .andExpect(jsonPath("$.channel").value("WEB"))
+                .andExpect(jsonPath("$.applicant.fullName").value("Sofia Ruiz"))
+                .andExpect(jsonPath("$.applicant.countryOfResidence").value("GB"))
+                .andExpect(jsonPath("$.applicant.taxResidencies[0]").value("GB"))
+                .andExpect(jsonPath("$.applicant.taxResidencies[1]").value("US"))
+                .andExpect(jsonPath("$.product.productCode").value("CREDIT_CARD_STANDARD"));
+    }
+
+    @Test
+    void unavailableApplicantIsARetryableJson503() throws Exception {
+        when(applicants.find("app-1240"))
+                .thenThrow(new ApplicantUnavailableException("app-1240"));
+
+        mvc.perform(get("/cases/app-1240/applicant"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("Retry")));
+    }
+
+    private static Application application() {
+        return new Application(
+                "app-1240",
+                "WEB",
+                "2026-07-25T09:14:00Z",
+                new Application.Applicant(
+                        "Sofia Ruiz",
+                        "1991-05-20",
+                        null,
+                        null,
+                        "ESP",
+                        "GB",
+                        List.of("GB", "US"),
+                        null,
+                        null,
+                        null,
+                        null),
+                null,
+                null,
+                null,
+                new Application.Product("CREDIT_CARD_STANDARD", 2000),
+                null,
+                null);
     }
 }

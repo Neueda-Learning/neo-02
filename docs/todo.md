@@ -15,9 +15,9 @@
 
 ## Later use cases
 
-- [ ] UC03 PR: implement `GET /cases/{applicationId}/applicant` as a live orchestrator proxy,
-  add the Decision Detail applicant panel, OpenAPI coverage, unavailable/retry UI, and tests.
-  Do not persist or cache applicant data.
+- [x] UC03: `GET /cases/{applicationId}/applicant` is a live orchestrator proxy; Decision
+  Detail hydrates its applicant sidebar independently, exposes retry on upstream failure, and
+  stores or caches no applicant data.
 - [ ] UC00 contract migration, deferred pending review: decide and implement the v5
   `/api/v1/policy/execute` path, `check-policy` command, `outputs` block, acknowledgement shape,
   sidecar/orchestrator compatibility, and OpenAPI tests as one coordinated change.

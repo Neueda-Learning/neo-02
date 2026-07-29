@@ -3,10 +3,12 @@ import {
   Alert,
   Badge,
   Button,
+  Caption,
   Card,
   Grid,
   KeyValue,
   PageHeader,
+  Split,
   Spinner,
   Stack,
   Tag,
@@ -104,41 +106,121 @@ export default function DecisionDetailScreen({ applicationId, onBack }) {
         </Alert>
       )}
 
-      <Stack gap={5}>
-        <Card title="Decision summary">
-          <Grid cols="auto" min={180}>
-            <KeyValue
-              stacked
-              items={[{ label: 'Effective outcome', value: detail.outcome ?? 'IN_PROGRESS' }]}
-            />
-            <KeyValue
-              stacked
-              items={[{ label: 'Machine outcome', value: detail.machineOutcome ?? 'Pending' }]}
-            />
-            <KeyValue
-              stacked
-              items={[
-                {
-                  label: 'Policy config',
-                  value:
-                    detail.policyConfigVersion == null
-                      ? 'Not pinned'
-                      : `Version ${detail.policyConfigVersion}`,
-                },
-              ]}
-            />
-          </Grid>
-        </Card>
+      <Split
+        ratio="wide-main"
+        sidebar={<ApplicantPanel key={applicationId} applicationId={applicationId} />}
+      >
+        <Stack gap={5}>
+          <Card title="Decision summary">
+            <Grid cols="auto" min={180}>
+              <KeyValue
+                stacked
+                items={[{ label: 'Effective outcome', value: detail.outcome ?? 'IN_PROGRESS' }]}
+              />
+              <KeyValue
+                stacked
+                items={[{ label: 'Machine outcome', value: detail.machineOutcome ?? 'Pending' }]}
+              />
+              <KeyValue
+                stacked
+                items={[
+                  {
+                    label: 'Policy config',
+                    value:
+                      detail.policyConfigVersion == null
+                        ? 'Not pinned'
+                        : `Version ${detail.policyConfigVersion}`,
+                  },
+                ]}
+              />
+            </Grid>
+          </Card>
 
-        {detail.ruleResults?.length > 0 && (
-          <Grid cols="auto" min={280}>
-            {detail.ruleResults.map((rule) => (
-              <RuleCard key={rule.ruleName} rule={rule} />
-            ))}
-          </Grid>
-        )}
-      </Stack>
+          {detail.ruleResults?.length > 0 && (
+            <Grid cols="auto" min={280}>
+              {detail.ruleResults.map((rule) => (
+                <RuleCard key={rule.ruleName} rule={rule} />
+              ))}
+            </Grid>
+          )}
+        </Stack>
+      </Split>
     </>
+  );
+}
+
+function ApplicantPanel({ applicationId }) {
+  const [application, setApplication] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      setLoading(true);
+      try {
+        const next = await api.getApplicant(applicationId);
+        if (!active) return;
+        setApplication(next);
+        setError(null);
+      } catch (nextError) {
+        if (!active) return;
+        setApplication(null);
+        setError(nextError);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [applicationId, attempt]);
+
+  const applicant = application?.applicant;
+  const product = application?.product;
+
+  return (
+    <Card title="Applicant" subtitle="live from the orchestrator">
+      {loading && <Spinner label="Loading applicant" />}
+
+      {!loading && error && (
+        <Alert
+          tone="warning"
+          title="Applicant unavailable"
+          action={
+            <Button size="sm" onClick={() => setAttempt((value) => value + 1)}>
+              Retry
+            </Button>
+          }
+        >
+          {error.message}
+        </Alert>
+      )}
+
+      {!loading && !error && (
+        <Stack gap={4}>
+          <KeyValue
+            stacked
+            items={[
+              ['Full name', valueOrDash(applicant?.fullName)],
+              ['Date of birth', valueOrDash(applicant?.dateOfBirth)],
+              ['Tax residencies', listOrDash(applicant?.taxResidencies)],
+              ['Product', valueOrDash(product?.productCode)],
+              ['Channel', valueOrDash(application?.channel)],
+              ['Country of residence', valueOrDash(applicant?.countryOfResidence)],
+            ]}
+          />
+          <Caption>
+            Fetched on open via the application proxy. Nothing in this panel is stored by
+            Customer Policy.
+          </Caption>
+        </Stack>
+      )}
+    </Card>
   );
 }
 
@@ -198,4 +280,12 @@ function RuleCard({ rule }) {
 
 function yesNo(value) {
   return value ? 'Yes' : 'No';
+}
+
+function valueOrDash(value) {
+  return value == null || value === '' ? '—' : value;
+}
+
+function listOrDash(values) {
+  return values?.length ? values.join(', ') : '—';
 }

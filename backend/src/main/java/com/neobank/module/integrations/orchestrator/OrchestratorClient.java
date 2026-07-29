@@ -131,4 +131,17 @@ public class OrchestratorClient {
      */
     public record SearchApplicationsResponse(List<String> applicationIds) {
     }
+
+    /**
+     * Fetch the orchestrator-owned application for UC03 applicant hydration.
+     *
+     * <p>This is deliberately a live read. The caller receives the application object and this
+     * module neither caches nor persists any part of it.</p>
+     */
+    public Application application(String applicationId) {
+        return http.get()
+                .uri(applicationsUrl + "/{applicationId}", applicationId)
+                .retrieve()
+                .body(Application.class);
+    }
 }

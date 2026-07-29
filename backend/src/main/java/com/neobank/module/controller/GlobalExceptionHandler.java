@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.neobank.module.service.ApplicantUnavailableException;
 import com.neobank.module.service.PolicyConfigValidationException;
 import com.neobank.module.service.CaseNotFoundException;
 
@@ -93,6 +94,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(CaseNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleCaseNotFound(CaseNotFoundException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(ApplicantUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleApplicantUnavailable(
+            ApplicantUnavailableException ex) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

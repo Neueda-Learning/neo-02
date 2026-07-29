@@ -7,6 +7,9 @@ FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
+# Windows checkouts may convert mvnw to CRLF, which makes Linux resolve the
+# shebang as "/bin/sh\r" and report the misleading "./mvnw: not found".
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
 COPY src/ src/
 RUN --mount=type=cache,target=/root/.m2,sharing=locked \
     ./mvnw -B -q clean package -DskipTests
