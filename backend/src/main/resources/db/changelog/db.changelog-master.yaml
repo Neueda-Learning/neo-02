@@ -20,3 +20,5 @@ databaseChangeLog:
       file: db/changelog/changes/007-seed-uc05-reason-code-window.yaml
   - include:
       file: db/changelog/changes/008-refresh-uc05-seed-window.yaml
+  - include:
+      file: db/changelog/changes/009-replace-uc05-with-curated-applications.yaml
