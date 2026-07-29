@@ -5,6 +5,7 @@ import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -21,5 +22,16 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select record from PolicyRecord record where record.applicationId = :applicationId")
     Optional<PolicyRecord> findForUpdate(@Param("applicationId") String applicationId);
+
+    List<PolicyRecord> findByApplicationIdContainingIgnoreCaseOrderBySubmittedAtDesc(
+            String query, Pageable pageable);
+
+    @Query("select record from PolicyRecord record "
+            + "where record.applicationId in :applicationIds order by record.submittedAt desc")
+    List<PolicyRecord> findByApplicationIdInOrderBySubmittedAtDesc(
+            @Param("applicationIds") List<String> applicationIds);
+
+    List<PolicyRecord> findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+            String name, Pageable pageable);
 }
 

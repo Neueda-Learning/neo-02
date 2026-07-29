@@ -1,11 +1,16 @@
 package com.neobank.module.integrations.orchestrator;
 
-import com.neobank.module.model.Decision;
+import java.util.List;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+import com.neobank.module.model.Decision;
 
 /**
  * The outbound half of the contract: telling the orchestrator what this module decided.
@@ -63,5 +68,75 @@ public class OrchestratorClient {
                 .uri(applicationsUrl + "/{applicationId}", applicationId)
                 .retrieve()
                 .body(Application.class);
+    }
+
+    /**
+     * Search for application IDs by applicant name via the orchestrator.
+     * UC-01 name search: GET /api/v1/applications?name={query} returns a list of application IDs
+     * that match the given name.
+     *
+     * @param name the applicant name to search for
+     * @return a list of matching application IDs, or empty list if none found or orchestrator
+     *         is unreachable
+     */
+    public List<String> searchApplicationIdsByName(String name) {
+        try {
+            SearchApplicationsResponse response = http.get()
+                    .uri(applicationsUrl + "?name={name}", name)
+                    .retrieve()
+                    .body(SearchApplicationsResponse.class);
+            return response != null ? response.applicationIds() : List.of();
+        } catch (RestClientException e) {
+            log.warn("Name search to the orchestrator failed for '{}': {} — returning empty list",
+                    name, e.toString());
+            return List.of();
+        }
+    }
+
+    /**
+     * Fetch applicant full name for one application via orchestrator payload.
+     *
+     * <p>Expected shape contains <code>application.applicant.fullName</code>; missing fields
+     * fall back to {@code "—"}.</p>
+     *
+     * @param applicationId application id
+     * @return applicant full name or {@code "—"} when missing
+     * @throws RestClientException when orchestrator is unreachable or non-2xx
+     */
+    @SuppressWarnings("unchecked")
+    public String fetchApplicantName(String applicationId) {
+        Map<String, Object> response = http.get()
+                .uri(applicationsUrl + "/{applicationId}", applicationId)
+                .retrieve()
+                .body(Map.class);
+
+        if (response == null) {
+            return "—";
+        }
+
+        Object application = response.get("application");
+        if (!(application instanceof Map<?, ?> applicationMap)) {
+            return "—";
+        }
+
+        Object applicant = ((Map<String, Object>) applicationMap).get("applicant");
+        if (!(applicant instanceof Map<?, ?> applicantMap)) {
+            return "—";
+        }
+
+        Object fullName = ((Map<String, Object>) applicantMap).get("fullName");
+        if (fullName == null) {
+            return "—";
+        }
+
+        String name = String.valueOf(fullName).trim();
+        return name.isEmpty() ? "—" : name;
+    }
+
+    /**
+     * DTO for the orchestrator's search response.
+     * Expected format: {"applicationIds": ["app-1", "app-2", ...]}
+     */
+    public record SearchApplicationsResponse(List<String> applicationIds) {
     }
 }

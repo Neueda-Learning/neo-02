@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppShell, Button, SideBrand, SideNav, StatusPill } from './design-system';
+import CasesScreen from './components/CasesScreen.jsx';
 import DecisionDetailScreen from './components/DecisionDetailScreen.jsx';
-import RequestsScreen from './components/RequestsScreen.jsx';
 import PolicyConfigScreen from './components/PolicyConfigScreen.jsx';
 import RejectionPatternsScreen from './components/RejectionPatternsScreen.jsx';
+import RequestsScreen from './components/RequestsScreen.jsx';
 import { api } from './api.js';
 
 const POLL_MS = 2000;
@@ -52,6 +53,7 @@ export default function App() {
   const screens = [
     { id: 'applications', label: 'Applications' },
     { id: 'patterns', label: 'Rejection Patterns' },
+    { id: 'cases', label: 'Search cases' },
     {
       id: 'decision',
       label: 'Decision detail',
@@ -98,6 +100,7 @@ export default function App() {
         <RequestsScreen requests={requests} error={error} info={info} onOpenCase={openCase} />
       )}
       {screen === 'patterns' && <RejectionPatternsScreen />}
+      {screen === 'cases' && <CasesScreen info={info} />}
       {screen === 'decision' && selectedCaseId && (
         <DecisionDetailScreen
           applicationId={selectedCaseId}

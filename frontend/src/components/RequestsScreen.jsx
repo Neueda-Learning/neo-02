@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -11,6 +11,7 @@ import {
   SearchInput,
   Toolbar,
 } from '../design-system';
+import { api } from '../api.js';
 import { statusTone, STATUSES, time } from '../status.js';
 
 const FILTERS = ['All', ...STATUSES];
@@ -27,6 +28,24 @@ const FILTERS = ['All', ...STATUSES];
 export default function RequestsScreen({ requests, error, info, onOpenCase }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
+  // null = not yet searched (show polled top-10); [] or rows = backend search result
+  const [searchResults, setSearchResults] = useState(null);
+
+  // When query changes, call backend; clear results when query is wiped
+  useEffect(() => {
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    api.listApplications(query.trim())
+      .then((data) => { if (!cancelled) setSearchResults(data || []); })
+      .catch(() => { if (!cancelled) setSearchResults([]); });
+    return () => { cancelled = true; };
+  }, [query]);
+
+  // Source: backend search results when query is active, polled top-10 otherwise
+  const source = searchResults ?? requests;
 
   const counts = useMemo(
     () =>
@@ -37,14 +56,10 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
     [requests]
   );
 
+  // Status chip filter applies to whatever source is active; no local text filter
   const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return requests.filter((r) => {
-      if (filter !== 'All' && r.status !== filter) return false;
-      if (!needle) return true;
-      return r.applicationId.toLowerCase().includes(needle);
-    });
-  }, [requests, query, filter]);
+    return source.filter((r) => filter === 'All' || r.status === filter);
+  }, [source, filter]);
 
   const columns = [
     { key: 'applicationId', header: 'Application', mono: true },
