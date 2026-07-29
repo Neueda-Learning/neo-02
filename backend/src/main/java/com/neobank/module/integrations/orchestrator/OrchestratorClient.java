@@ -11,6 +11,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import com.neobank.module.model.Decision;
+import com.neobank.module.model.PolicyOutcome;
 
 /**
  * The outbound half of the contract: telling the orchestrator what this module decided.
@@ -60,6 +61,22 @@ public class OrchestratorClient {
             log.warn("Status update to the orchestrator failed for {}: {} — its timeout sweeper "
                     + "will notice", applicationId, e.toString());
         }
+    }
+
+    /**
+     * Reports a UC04 human answer over the system's fixed three-field callback contract.
+     * The local-manual origin and policy code travel in {@code comment}; the wire status remains
+     * ACCEPTED/REJECTED as required by the orchestrator contract.
+     */
+    public void manualPolicyDecision(
+            String applicationId, PolicyOutcome outcome, String reason) {
+        Decision status = outcome == PolicyOutcome.APPROVED
+                ? Decision.ACCEPTED
+                : Decision.REJECTED;
+        String code = outcome == PolicyOutcome.APPROVED
+                ? "POL_MANUAL_APPROVED"
+                : "POL_MANUAL_DECLINED";
+        applicationStatusUpdate(applicationId, status, "local-manual " + code + ": " + reason);
     }
 
     /** Fetches the orchestrator-owned application live for the standard applicant proxy. */

@@ -2,16 +2,22 @@ package com.neobank.module.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neobank.module.dto.CaseDetailView;
 import com.neobank.module.dto.ApplicantViewDto;
+import com.neobank.module.dto.ReferralQueueItem;
 import com.neobank.module.model.RuleResult;
 import com.neobank.module.service.ApplicantUnavailableException;
 import com.neobank.module.service.ApplicantService;
 import com.neobank.module.service.CaseDetailService;
 import com.neobank.module.service.CaseNotFoundException;
+import com.neobank.module.service.ReferralConflictException;
+import com.neobank.module.service.ReferralQueueService;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,9 +37,13 @@ class CaseControllerTest {
     @MockBean
     private ApplicantService applicants;
 
+    @MockBean
+    private ReferralQueueService referrals;
+
     @Test
     void returnsTheStoredDecisionAndFourRuleSections() throws Exception {
         when(cases.find("app-1234")).thenReturn(new CaseDetailView(
+                "app-1234",
                 "APPROVED",
                 "APPROVED",
                 "pol-000214",
@@ -42,7 +52,9 @@ class CaseControllerTest {
                         RuleResult.existingProduct(true, true, List.of()),
                         RuleResult.taxResidency(true, "SUPPORTED", List.of()),
                         RuleResult.restrictionList(true, List.of()),
-                        RuleResult.sampling(false, 1, List.of("POL_ALL_CHECKS_PASSED")))));
+                        RuleResult.sampling(false, 1, List.of("POL_ALL_CHECKS_PASSED"))),
+                null, null, null, Instant.parse("2026-07-15T08:00:00Z"), null,
+                Instant.parse("2026-07-15T07:59:00Z")));
 
         mvc.perform(get("/cases/app-1234"))
                 .andExpect(status().isOk())
@@ -53,6 +65,54 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.ruleResults.length()").value(4))
                 .andExpect(jsonPath("$.ruleResults[0].registryChecked").value(true))
                 .andExpect(jsonPath("$.ruleResults[3].sampled").value(false));
+    }
+
+    @Test
+    void listsOnlyTheOpenReferralRowsReturnedByTheService() throws Exception {
+        when(referrals.findOpenReferrals()).thenReturn(List.of(new ReferralQueueItem(
+                "app-1287", "pol-000287", "APPROVED", "sampled", null, null,
+                Instant.parse("2026-07-15T08:00:00Z"))));
+
+        mvc.perform(get("/cases?outcome=REFERRED&unclaimed-first=true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].applicationId").value("app-1287"))
+                .andExpect(jsonPath("$[0].referralCause").value("sampled"))
+                .andExpect(jsonPath("$[0].machineOutcome").value("APPROVED"));
+    }
+
+    @Test
+    void claimConflictIs409() throws Exception {
+        when(referrals.claim("app-1287", "other.operator"))
+                .thenThrow(new ReferralConflictException("already claimed"));
+
+        mvc.perform(post("/cases/app-1287/claim")
+                        .contentType("application/json")
+                        .content("{\"operator\":\"other.operator\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("already claimed"));
+    }
+
+    @Test
+    void decisionRequiresReasonAndOperator() throws Exception {
+        mvc.perform(post("/cases/app-1287/decision")
+                        .contentType("application/json")
+                        .content("{\"outcome\":\"APPROVED\",\"reason\":\"\",\"operator\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.errors.length()").value(2));
+    }
+
+    @Test
+    void referredIsNotAValidHumanOutcome() throws Exception {
+        when(referrals.decide("app-1287", com.neobank.module.model.PolicyOutcome.REFERRED,
+                "wait", "s.chen"))
+                .thenThrow(new IllegalArgumentException("outcome must be APPROVED or REJECTED"));
+
+        mvc.perform(post("/cases/app-1287/decision")
+                        .contentType("application/json")
+                        .content("{\"outcome\":\"REFERRED\",\"reason\":\"wait\",\"operator\":\"s.chen\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("outcome must be APPROVED or REJECTED"));
     }
 
     @Test

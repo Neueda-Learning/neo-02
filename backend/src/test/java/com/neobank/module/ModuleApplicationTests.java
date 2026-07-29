@@ -102,6 +102,10 @@ class ModuleApplicationTests {
                 .andExpect(jsonPath("$.paths['/api/v1/applications'].post").exists())
                 .andExpect(jsonPath("$.paths['/cases/{applicationId}'].get").exists())
                 .andExpect(jsonPath("$.paths['/cases/{applicationId}/applicant'].get").exists())
+                .andExpect(jsonPath("$.paths['/cases'].get").exists())
+                .andExpect(jsonPath("$.paths['/cases/{applicationId}/claim'].post").exists())
+                .andExpect(jsonPath("$.paths['/cases/{applicationId}/release'].post").exists())
+                .andExpect(jsonPath("$.paths['/cases/{applicationId}/decision'].post").exists())
                 .andExpect(jsonPath("$.paths['/reason-codes'].get").exists());
     }
 

@@ -1,11 +1,16 @@
 package com.neobank.module.integrations.orchestrator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.neobank.module.model.PolicyOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -42,6 +47,22 @@ class OrchestratorClientTest {
 
         assertThat(result.applicant().fullName()).isEqualTo("Sofia Ruiz");
         assertThat(result.applicant().taxResidencies()).containsExactly("GB", "US");
+        server.verify();
+    }
+
+    @Test
+    void manualApprovalUsesTheFixedCallbackShapeAndCarriesTheManualCode() {
+        server.expect(requestTo("https://orchestrator.test/api/v1/applications/app-1287"))
+                .andExpect(method(HttpMethod.PUT))
+                .andExpect(content().json("""
+                        {"serviceId":"neo02","status":"ACCEPTED",
+                         "comment":"local-manual POL_MANUAL_APPROVED: machine confirmed"}
+                        """))
+                .andRespond(withSuccess());
+
+        client.manualPolicyDecision(
+                "app-1287", PolicyOutcome.APPROVED, "machine confirmed");
+
         server.verify();
     }
 }

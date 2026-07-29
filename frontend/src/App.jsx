@@ -4,6 +4,7 @@ import CasesScreen from './components/CasesScreen.jsx';
 import DecisionDetailScreen from './components/DecisionDetailScreen.jsx';
 import PolicyConfigScreen from './components/PolicyConfigScreen.jsx';
 import RejectionPatternsScreen from './components/RejectionPatternsScreen.jsx';
+import ReferralQueueScreen from './components/ReferralQueueScreen.jsx';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import { api } from './api.js';
 
@@ -54,6 +55,7 @@ export default function App() {
   const screens = [
     { id: 'applications', label: 'Applications' },
     { id: 'patterns', label: 'Rejection Patterns' },
+    { id: 'referrals', label: 'Referral Queue', hint: 'human review' },
     { id: 'cases', label: 'Search cases' },
     { id: 'overrides', label: 'Overrides', hint: 'operator actions', disabled: true },
     { id: 'settings', label: 'Policy Config' },
@@ -105,6 +107,9 @@ export default function App() {
         />
       )}
       {screen === 'patterns' && <RejectionPatternsScreen />}
+      {screen === 'referrals' && (
+        <ReferralQueueScreen onOpenCase={(row) => openCase(row, 'referrals')} />
+      )}
       {screen === 'cases' && (
         <CasesScreen info={info} onOpenCase={(row) => openCase(row, 'cases')} />
       )}
@@ -112,7 +117,11 @@ export default function App() {
         <DecisionDetailScreen
           applicationId={selectedCaseId}
           backLabel={
-            detailReturnScreen === 'cases' ? 'Back to search cases' : 'Back to applications'
+            detailReturnScreen === 'referrals'
+              ? 'Back to referral queue'
+              : detailReturnScreen === 'cases'
+                ? 'Back to search cases'
+                : 'Back to applications'
           }
           onBack={() => setScreen(detailReturnScreen)}
         />
