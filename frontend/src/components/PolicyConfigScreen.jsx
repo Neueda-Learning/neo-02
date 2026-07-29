@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -12,14 +12,15 @@ import {
   Stack,
 } from '../design-system';
 import { api } from '../api.js';
+import PolicyConfigEditor from './PolicyConfigEditor.jsx';
 
 /**
- * UC08 · View Config History
+ * UC07 · Edit Policy Config + UC08 · View Config History
  *
  * Follows the same case-detail shape as the rest of the app (`Split`): the
  * version history board on the left, the read-only document for whichever
- * version is selected on the right — never editable here, that is UC07's
- * `POST /config`.
+ * version is selected on the right. UC07 starts from the current document and
+ * publishes the edited whole document as a new insert-only version.
  */
 export default function PolicyConfigScreen() {
   const [versions, setVersions] = useState([]);
@@ -28,19 +29,32 @@ export default function PolicyConfigScreen() {
   const [compareWithVersion, setCompareWithVersion] = useState(null);
   const [restrictionSearchQuery, setRestrictionSearchQuery] = useState('');
   const [error, setError] = useState(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [publishedVersion, setPublishedVersion] = useState(null);
 
-  useEffect(() => {
+  const loadVersions = useCallback((preferredVersion = null) => {
     api.listConfigVersions()
       .then((data) => {
         setVersions(data);
         const current = data.find((v) => v.isCurrent) ?? data[data.length - 1] ?? null;
-        setSelectedVersion(current?.version ?? null);
+        setSelectedVersion((previous) => {
+          if (preferredVersion != null && data.some((v) => v.version === preferredVersion)) {
+            return preferredVersion;
+          }
+          if (previous != null && data.some((v) => v.version === previous)) return previous;
+          return current?.version ?? null;
+        });
         setError(null);
       })
       .catch((e) => setError(e.message));
   }, []);
 
+  useEffect(() => {
+    loadVersions();
+  }, [loadVersions]);
+
   const selected = versions.find((v) => v.version === selectedVersion) ?? null;
+  const current = versions.find((v) => v.isCurrent) ?? versions[versions.length - 1] ?? null;
   const compareWith = compareMode ? versions.find((v) => v.version === compareWithVersion) : null;
 
   // 检测差异的辅助函数
@@ -150,8 +164,34 @@ export default function PolicyConfigScreen() {
     <>
       <PageHeader
         title="Policy Configuration"
-        lede="every past version of the policy — oldest first · read-only · select a version to see the lists that decided a case under it"
+        lede="publish policy as data · every change creates a new version · earlier cases keep their original version"
+        actions={
+          <Button
+            variant="primary"
+            disabled={!current}
+            onClick={() => {
+              setPublishedVersion(null);
+              setEditorOpen(true);
+            }}
+          >
+            Edit Policy Config
+          </Button>
+        }
       />
+
+      {publishedVersion != null && (
+        <Alert
+          tone="positive"
+          title={`Policy version ${publishedVersion} is now current`}
+          action={
+            <Button size="sm" variant="ghost" onClick={() => setPublishedVersion(null)}>
+              Dismiss
+            </Button>
+          }
+        >
+          It will be used by the next application; existing decisions remain unchanged.
+        </Alert>
+      )}
 
       {error && (
         <Alert tone="negative" title="Could not load policy configuration">
@@ -507,6 +547,20 @@ export default function PolicyConfigScreen() {
           />
         )}
       </Split>
+
+      {editorOpen && current && (
+        <PolicyConfigEditor
+          key={current.version}
+          open
+          current={current}
+          onClose={() => setEditorOpen(false)}
+          onPublished={(version) => {
+            setEditorOpen(false);
+            setPublishedVersion(version);
+            loadVersions(version);
+          }}
+        />
+      )}
     </>
   );
 }

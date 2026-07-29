@@ -15,13 +15,21 @@ import { cx } from '../../internal/cx.js';
 export function Modal({ open, title, onClose, footer, wide = false, className, children, ...rest }) {
   const panel = useRef(null);
 
+  // Move focus only when the dialog actually opens. Callers commonly pass an
+  // inline onClose callback; treating each new function identity as a reopen
+  // steals focus from whatever field the operator is typing in.
+  useEffect(() => {
+    if (!open) return undefined;
+    panel.current?.focus();
+    return undefined;
+  }, [open]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (event) => {
       if (event.key === 'Escape') onClose?.();
     };
     document.addEventListener('keydown', onKey);
-    panel.current?.focus();
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 

@@ -39,6 +39,11 @@ export const api = {
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   getCaseApplicant: (id) => request(`/cases/${encodeURIComponent(id)}/applicant`),
   listConfigVersions: () => request('/config/versions'),
+  createConfig: (config) =>
+    request('/config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
   listReasonCodes: (from, to) =>
     request(`/reason-codes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   searchCases: async (query, limit = 10) => {
