@@ -42,7 +42,7 @@ public class ApplicationService {
      * application ids are acknowledged but never scheduled a second time.
      */
     public void accept(ApplicationRequest request) {
-        boolean inserted = writer.createIfAbsent(request.applicationId());
+        boolean inserted = writer.createIfAbsent(request.applicationId(), applicantFullName(request));
         if (inserted) {
             try {
                 executor.execute(() -> processApplication(request));
@@ -60,6 +60,18 @@ public class ApplicationService {
     /** UC00 establishes the durable hand-off; policy decisions are implemented by later UCs. */
     void processApplication(ApplicationRequest request) {
         log.info("Policy case ready for decision — {}", request.summary());
+    }
+
+    /**
+     * Reads {@code application.applicant.fullName} from the inbound payload, null-guarded at
+     * every level since a malformed request can still omit {@code application} or
+     * {@code applicant} entirely (see {@link ApplicationRequest#summary()}).
+     */
+    private static String applicantFullName(ApplicationRequest request) {
+        if (request.application() == null || request.application().applicant() == null) {
+            return null;
+        }
+        return request.application().applicant().fullName();
     }
 
     @Transactional(readOnly = true)

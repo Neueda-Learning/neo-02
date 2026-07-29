@@ -28,6 +28,9 @@ public class PolicyRecord {
     @Column(name = "machine_outcome", length = 16)
     private String machineOutcome;
 
+    @Column(name = "applicant_full_name", length = 200)
+    private String applicantFullName;
+
     @Column(nullable = false, unique = true, length = 32)
     private String reference;
 
@@ -105,6 +108,10 @@ public class PolicyRecord {
 
     public String getMachineOutcome() {
         return machineOutcome;
+    }
+
+    public String getApplicantFullName() {
+        return applicantFullName;
     }
 
     public String getReference() {

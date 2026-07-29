@@ -21,18 +21,21 @@ public class PolicyRecordWriter {
     /**
      * Returns true only for the caller that inserted the row. The primary key makes the insert
      * atomic under concurrent retries; returning means the transaction has committed.
+     *
+     * @param applicantFullName captured once at intake from {@code application.applicant.fullName};
+     *                          may be {@code null} when the inbound payload omits it
      */
     @Transactional
-    public boolean createIfAbsent(String applicationId) {
+    public boolean createIfAbsent(String applicationId, String applicantFullName) {
         Instant now = Instant.now();
         int inserted = jdbc.update("""
                         INSERT IGNORE INTO policy_record
-                          (application_id, processing_status, reference, submitted_at,
-                           created_at, updated_at, lock_version)
-                        VALUES (?, 'IN_PROGRESS', ?, ?, ?, ?, 0)
+                          (application_id, processing_status, reference, applicant_full_name,
+                           submitted_at, created_at, updated_at, lock_version)
+                        VALUES (?, 'IN_PROGRESS', ?, ?, ?, ?, ?, 0)
                         """,
-                applicationId, newReference(), Timestamp.from(now), Timestamp.from(now),
-                Timestamp.from(now));
+                applicationId, newReference(), applicantFullName, Timestamp.from(now),
+                Timestamp.from(now), Timestamp.from(now));
         return inserted == 1;
     }
 

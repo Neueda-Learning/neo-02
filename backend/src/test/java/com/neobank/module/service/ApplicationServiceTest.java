@@ -45,20 +45,20 @@ class ApplicationServiceTest {
 
     @Test
     void commitsTheRowBeforeSchedulingTheWorker() {
-        when(writer.createIfAbsent("SIM-01")).thenAnswer(invocation -> {
+        when(writer.createIfAbsent("SIM-01", null)).thenAnswer(invocation -> {
             assertThat(scheduled).isEmpty();
             return true;
         });
 
         service.accept(request("SIM-01"));
 
-        verify(writer).createIfAbsent("SIM-01");
+        verify(writer).createIfAbsent("SIM-01", null);
         assertThat(scheduled).hasSize(1);
     }
 
     @Test
     void duplicateRequestIsNotScheduledAgain() {
-        when(writer.createIfAbsent("SIM-01")).thenReturn(false);
+        when(writer.createIfAbsent("SIM-01", null)).thenReturn(false);
 
         service.accept(request("SIM-01"));
 
@@ -69,7 +69,7 @@ class ApplicationServiceTest {
     @Test
     void schedulingFailureDoesNotUndoTheDurableAcceptance() {
         PolicyRecordWriter successfulWriter = mock(PolicyRecordWriter.class);
-        when(successfulWriter.createIfAbsent("SIM-04")).thenReturn(true);
+        when(successfulWriter.createIfAbsent("SIM-04", null)).thenReturn(true);
         Executor rejectingExecutor = task -> {
             throw new IllegalStateException("worker pool unavailable");
         };
@@ -78,7 +78,7 @@ class ApplicationServiceTest {
 
         acceptingService.accept(request("SIM-04"));
 
-        verify(successfulWriter).createIfAbsent("SIM-04");
+        verify(successfulWriter).createIfAbsent("SIM-04", null);
     }
 
     @Test

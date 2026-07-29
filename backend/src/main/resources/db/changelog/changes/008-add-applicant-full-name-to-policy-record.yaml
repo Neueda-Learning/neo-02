@@ -1,0 +1,19 @@
+# Adds the applicant's full name, captured at intake time from the inbound application
+# payload (application.applicant.fullName), so it can be persisted alongside the case instead
+# of only being resolved live through the orchestrator (see docs/schema-design.md §6.1).
+databaseChangeLog:
+  - changeSet:
+      id: 008-add-applicant-full-name-to-policy-record
+      author: neo-02
+      changes:
+        - addColumn:
+            tableName: policy_record
+            columns:
+              - column:
+                  # Captured once at intake from application.applicant.fullName; not refreshed later.
+                  name: applicant_full_name
+                  type: VARCHAR(200)
+      rollback:
+        - dropColumn:
+            tableName: policy_record
+            columnName: applicant_full_name
