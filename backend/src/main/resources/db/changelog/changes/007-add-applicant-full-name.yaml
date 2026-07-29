@@ -1,0 +1,24 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-add-applicant-full-name
+      author: neo-02
+      changes:
+        - addColumn:
+            tableName: policy_record
+            columns:
+              - column:
+                  name: applicant_full_name
+                  type: VARCHAR(200)
+        - createIndex:
+            tableName: policy_record
+            indexName: idx_policy_record_applicant_name
+            columns:
+              - column:
+                  name: applicant_full_name
+      rollback:
+        - dropIndex:
+            tableName: policy_record
+            indexName: idx_policy_record_applicant_name
+        - dropColumn:
+            tableName: policy_record
+            columnName: applicant_full_name

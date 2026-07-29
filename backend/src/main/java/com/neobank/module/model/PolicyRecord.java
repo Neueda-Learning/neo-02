@@ -35,6 +35,9 @@ public class PolicyRecord {
     @Column(name = "machine_outcome", length = 16)
     private PolicyOutcome machineOutcome;
 
+    @Column(name = "applicant_full_name", length = 200)
+    private String applicantFullName;
+
     @Column(nullable = false, unique = true, length = 32)
     private String reference;
 
@@ -103,6 +106,10 @@ public class PolicyRecord {
         return machineOutcome;
     }
 
+    public String getApplicantFullName() {
+        return applicantFullName;
+    }
+
     public String getReference() {
         return reference;
     }
@@ -137,5 +144,13 @@ public class PolicyRecord {
         this.ruleResults = new ArrayList<>(result.ruleResults());
         this.processingStatus = "DECIDED";
         this.decidedAt = Instant.now();
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }

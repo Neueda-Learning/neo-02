@@ -1,19 +1,23 @@
 package com.neobank.module.controller;
 
-import com.neobank.module.dto.PolicyRecordView;
-import com.neobank.module.integrations.orchestrator.ApplicationRequest;
-import com.neobank.module.service.ApplicationService;
-import jakarta.validation.Valid;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.neobank.module.dto.PolicyRecordView;
+import com.neobank.module.integrations.orchestrator.ApplicationRequest;
+import com.neobank.module.service.ApplicationService;
+
+import jakarta.validation.Valid;
 
 /**
  * This module's entire HTTP surface: one endpoint the orchestrator calls, one your own UI reads.
@@ -79,9 +83,17 @@ public class ApplicationController {
     /**
      * Everything this module has answered, newest first. Read by this module's own UI; the
      * orchestrator never calls it.
+     *
+     * <p>Optional {@code ?q=} parameter: when present (even if empty), delegates to
+     * {@link ApplicationService#searchApplications} which searches the full table and caps at 10.
+     * An empty {@code q} returns {@code []} — the board is empty until the user types.
+     * Without {@code q} the top-10 default list is returned as before.</p>
      */
     @GetMapping
-    public List<PolicyRecordView> list() {
+    public List<PolicyRecordView> list(@RequestParam(required = false) String q) {
+        if (q != null) {
+            return applications.searchApplications(q);
+        }
         return applications.findAll();
     }
 }

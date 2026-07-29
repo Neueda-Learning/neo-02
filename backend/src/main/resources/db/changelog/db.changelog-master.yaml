@@ -14,3 +14,5 @@ databaseChangeLog:
       file: db/changelog/changes/005-seed-policy-config-v1.yaml
   - include:
       file: db/changelog/changes/006-drop-demo-showcase.yaml
+  - include:
+      file: db/changelog/changes/007-add-applicant-full-name.yaml

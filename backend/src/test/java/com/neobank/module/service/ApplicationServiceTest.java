@@ -6,7 +6,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.neobank.module.dto.CaseSearchResult;
 import com.neobank.module.dto.PolicyRecordView;
+import com.neobank.module.integrations.orchestrator.Application;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.integrations.orchestrator.OrchestratorClient;
 import com.neobank.module.model.Decision;
@@ -151,6 +153,35 @@ class ApplicationServiceTest {
         });
     }
 
+    @Test
+    void capturesApplicantNameForUc01SearchAtIntake() {
+        when(writer.createIfAbsent("SIM-06", "Maria Nowak")).thenReturn(true);
+
+        service.accept(namedRequest("SIM-06", "Maria Nowak"));
+
+        verify(writer).createIfAbsent("SIM-06", "Maria Nowak");
+        assertThat(scheduled).hasSize(1);
+    }
+
+    @Test
+    void uc01NameSearchCapsLocalMatchesAndReportsMore() {
+        when(records.findById("Maria")).thenReturn(Optional.empty());
+        List<PolicyRecord> matches = java.util.stream.IntStream.rangeClosed(1, 11)
+                .mapToObj(index -> new PolicyRecord(
+                        "SIM-%02d".formatted(index), "pol-%010d".formatted(index)))
+                .toList();
+        when(records.findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
+                org.mockito.ArgumentMatchers.eq("Maria"),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(matches);
+
+        CaseSearchResult result = service.searchCases("Maria", 10);
+
+        assertThat(result.results()).hasSize(10);
+        assertThat(result.more()).isTrue();
+        verify(orchestrator, never()).searchApplicationIdsByName("Maria");
+    }
+
     private ApplicationService service(Executor executor) {
         return new ApplicationService(
                 executor, writer, records, decisions, configs, registry, rules, orchestrator);
@@ -158,6 +189,14 @@ class ApplicationServiceTest {
 
     private static ApplicationRequest request(String id) {
         return new ApplicationRequest(id, "corr-1", "check-policy", null);
+    }
+
+    private static ApplicationRequest namedRequest(String id, String fullName) {
+        Application.Applicant applicant = new Application.Applicant(
+                fullName, null, null, null, null, null, null, null, null, null, null);
+        Application application = new Application(
+                id, null, null, applicant, null, null, null, null, null, null);
+        return new ApplicationRequest(id, "corr-1", "check-policy", application);
     }
 
     private PolicyRecord decidedRecord(String id) {
