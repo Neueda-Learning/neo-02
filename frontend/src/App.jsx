@@ -73,7 +73,7 @@ export default function App() {
   const screens = [
     { id: 'applications', label: 'Applications' },
     { id: 'patterns', label: 'Rejection Patterns' },
-    { id: 'referrals', label: 'Referral Queue', hint: 'human review' },
+    { id: 'referrals', label: 'Referral Queue' },
     { id: 'cases', label: 'Search cases' },
     { id: 'settings', label: 'Policy Config' },
   ];
@@ -113,7 +113,7 @@ export default function App() {
           </div>
         </>
       }
-      footer="Customer Policy | applications arrive from the orchestrator"
+      footer="Customer Policy | Cache me if u can"
     >
       {screen === 'applications' && (
         <RequestsScreen

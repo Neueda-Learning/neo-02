@@ -181,10 +181,7 @@ export default function CasesScreen({ info, onOpenCase }) {
         lede="empty until you search · max 10 rows · names fetched live, never stored"
         meta={
           info
-            ? `${info.serviceId} · ${info.domain} · v${info.version}` +
-              (info.mockedDependencies?.length
-                ? ` · mocking ${info.mockedDependencies.join(', ')}`
-                : ' · nothing mocked')
+            ? `${info.serviceId} · custom ${info.domain} · v${info.version}`
             : undefined
         }
       />

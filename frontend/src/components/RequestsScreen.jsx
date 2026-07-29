@@ -95,10 +95,7 @@ export default function RequestsScreen({
         lede="everything the orchestrator has sent this module, and what it answered · newest first"
         meta={
           info
-            ? `${info.serviceId} · ${info.domain} · v${info.version}` +
-              (info.mockedDependencies?.length
-                ? ` · mocking ${info.mockedDependencies.join(', ')}`
-                : ' · nothing mocked')
+            ? `${info.serviceId} · custom ${info.domain} · v${info.version}`
             : undefined
         }
       />
