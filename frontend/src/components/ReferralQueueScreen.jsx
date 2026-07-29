@@ -20,16 +20,17 @@ export default function ReferralQueueScreen({ onOpenCase }) {
   const [operator, setOperator] = useState(() => localStorage.getItem('policyOperator') ?? '');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
-  const [error, setError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [operatorError, setOperatorError] = useState(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       setRows(await api.listReferrals());
-      setError(null);
+      setLoadError(null);
     } catch (e) {
-      setError(e.message);
+      setLoadError(e.message);
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -56,7 +57,7 @@ export default function ReferralQueueScreen({ onOpenCase }) {
     const currentOperator = requireOperator();
     if (!currentOperator) return;
     setBusyId(row.applicationId);
-    setError(null);
+    setActionError(null);
     try {
       if (action === 'claim') {
         await api.claimReferral(row.applicationId, currentOperator);
@@ -65,7 +66,7 @@ export default function ReferralQueueScreen({ onOpenCase }) {
       }
       await load(true);
     } catch (e) {
-      setError(e.message);
+      setActionError(e.message);
     } finally {
       setBusyId(null);
     }
@@ -124,7 +125,17 @@ export default function ReferralQueueScreen({ onOpenCase }) {
         actions={<Button onClick={() => load()}>Refresh</Button>}
       />
 
-      {error && <Alert tone="negative" title="Referral action failed">{error}</Alert>}
+      {loadError && (
+        <Alert tone="warning" title="Reconnecting to the referral queue">
+          {loadError} The page will retry automatically.
+        </Alert>
+      )}
+
+      {actionError && (
+        <Alert tone="negative" title="Referral action failed">
+          {actionError}
+        </Alert>
+      )}
 
       <Toolbar>
         <Field label="Operator ID" required error={operatorError}>
@@ -144,7 +155,7 @@ export default function ReferralQueueScreen({ onOpenCase }) {
         </Field>
       </Toolbar>
 
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <EmptyState title="Loading referral queue…" />
       ) : (
         <DataTable

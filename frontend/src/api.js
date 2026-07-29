@@ -2,10 +2,18 @@
 const BASE = import.meta.env.VITE_API_BASE || '';
 
 async function fetchJson(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+  } catch (cause) {
+    const error = new Error('The service is temporarily unreachable.');
+    error.status = 0;
+    error.cause = cause;
+    throw error;
+  }
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     let details = null;
@@ -70,7 +78,7 @@ export const api = {
     return { results: body ?? [], more: headers.get('X-More-Results') === 'true' };
   },
   getApplicant: (id) => request(`/api/v1/cases/${encodeURIComponent(id)}/applicant`),
-  listReferrals: () => request('/cases?outcome=REFERRED&unclaimed-first=true'),
+  listReferrals: () => request('/api/v1/referrals'),
   claimReferral: (id, operator) =>
     request(`/cases/${encodeURIComponent(id)}/claim`, {
       method: 'POST',
