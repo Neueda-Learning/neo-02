@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Badge,
+  Button,
   ChipGroup,
   DataTable,
   EmptyState,
@@ -22,13 +23,22 @@ const FILTERS = ['All', ...STATUSES];
  * UC00's durable intake board. A row appears as IN_PROGRESS as soon as the request commits.
  *
  * The board follows the platform shape (design-system/DESIGN.md § "Board"): a header stating the
- * screen's rules, a toolbar that narrows, a capped table. The 10-row cap and its footnote come from
- * DataTable — no screen re-implements them.
+ * screen's rules, a toolbar that narrows, and a paged table. DataTable keeps each page capped at
+ * 10 rows; Previous/Next moves through the full durable intake board.
  */
-export default function RequestsScreen({ requests, error, info, onOpenCase }) {
+export default function RequestsScreen({
+  requests,
+  error,
+  info,
+  page,
+  more,
+  total,
+  onPageChange,
+  onOpenCase,
+}) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
-  // null = not yet searched (show polled top-10); [] or rows = backend search result
+  // null = not yet searched (show the polled page); [] or rows = backend search result
   const [searchResults, setSearchResults] = useState(null);
 
   // When query changes, call backend; clear results when query is wiped
@@ -38,14 +48,15 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
       return;
     }
     let cancelled = false;
-    api.listApplications(query.trim())
+    api.searchApplications(query.trim())
       .then((data) => { if (!cancelled) setSearchResults(data || []); })
       .catch(() => { if (!cancelled) setSearchResults([]); });
     return () => { cancelled = true; };
   }, [query]);
 
-  // Source: backend search results when query is active, polled top-10 otherwise
+  // Source: backend search results when query is active, the current polled page otherwise
   const source = searchResults ?? requests;
+  const pageCount = Math.max(1, Math.ceil(total / 10));
 
   const counts = useMemo(
     () =>
@@ -95,7 +106,7 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
       )}
 
       <Grid cols={2} min={180} style={{ marginBottom: 'var(--ds-space-6)' }}>
-        <MetricTile label="Seen" value={requests.length} />
+        <MetricTile label="Seen" value={total} />
         <MetricTile label="In progress" value={counts.IN_PROGRESS ?? 0} tone="info" />
       </Grid>
 
@@ -133,6 +144,26 @@ export default function RequestsScreen({ requests, error, info, onOpenCase }) {
           </EmptyState>
         }
       />
+
+      {searchResults == null && (
+        <Toolbar style={{ marginTop: 'var(--ds-space-4)' }}>
+          <Button
+            variant="ghost"
+            disabled={page === 0}
+            onClick={() => onPageChange(page - 1)}
+          >
+            Previous
+          </Button>
+          <span>Page {page + 1} of {pageCount}</span>
+          <Button
+            variant="ghost"
+            disabled={!more}
+            onClick={() => onPageChange(page + 1)}
+          >
+            Next
+          </Button>
+        </Toolbar>
+      )}
     </>
   );
 }

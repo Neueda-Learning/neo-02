@@ -5,17 +5,25 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.neobank.module.dto.PolicyRecordView;
 import com.neobank.module.integrations.orchestrator.ApplicationRequest;
 import com.neobank.module.service.ApplicationService;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -36,6 +44,25 @@ class ApplicationControllerTest {
 
     @MockBean
     private ApplicationService applications;
+
+    @Test
+    void listsARequestedPageWithoutChangingTheArrayBody() throws Exception {
+        Instant submittedAt = Instant.parse("2026-07-29T08:00:00Z");
+        PolicyRecordView row = new PolicyRecordView(
+                "SIM-11", "REFERRED", "pol-1234567890", submittedAt, submittedAt,
+                "REFERRED", true, 1);
+        PageRequest pageRequest = PageRequest.of(1, 10);
+        when(applications.findAll(1, 10))
+                .thenReturn(new PageImpl<>(List.of(row), pageRequest, 25));
+
+        mvc.perform(get("/api/v1/applications").queryParam("page", "1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Page", "1"))
+                .andExpect(header().string("X-More-Results", "true"))
+                .andExpect(header().string("X-Total-Count", "25"))
+                .andExpect(jsonPath("$[0].applicationId").value("SIM-11"))
+                .andExpect(jsonPath("$[0].status").value("REFERRED"));
+    }
 
     @Test
     void acceptsAnApplicationAndHandsItToTheService() throws Exception {

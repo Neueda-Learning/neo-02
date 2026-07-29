@@ -19,6 +19,7 @@ import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -152,10 +153,12 @@ public class ApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<PolicyRecordView> findAll() {
-        return records.findTop10ByOrderByCreatedAtDescApplicationIdDesc().stream()
-                .map(PolicyRecordView::of)
-                .toList();
+    public Page<PolicyRecordView> findAll(int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 10));
+        return records.findAllByOrderByCreatedAtDescApplicationIdDesc(
+                        PageRequest.of(safePage, safeSize))
+                .map(PolicyRecordView::of);
     }
 
     /**

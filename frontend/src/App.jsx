@@ -16,18 +16,24 @@ export default function App() {
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [detailReturnScreen, setDetailReturnScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
+  const [applicationPage, setApplicationPage] = useState(0);
+  const [applicationMore, setApplicationMore] = useState(false);
+  const [applicationTotal, setApplicationTotal] = useState(0);
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
   const [info, setInfo] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      setRequests(await api.listApplications());
+      const result = await api.listApplications(applicationPage);
+      setRequests(result.results);
+      setApplicationMore(result.more);
+      setApplicationTotal(result.total);
       setError(null);
     } catch (e) {
       setError(e.message);
     }
-  }, []);
+  }, [applicationPage]);
 
   useEffect(() => {
     reload();
@@ -103,6 +109,10 @@ export default function App() {
           requests={requests}
           error={error}
           info={info}
+          page={applicationPage}
+          more={applicationMore}
+          total={applicationTotal}
+          onPageChange={setApplicationPage}
           onOpenCase={(row) => openCase(row, 'applications')}
         />
       )}

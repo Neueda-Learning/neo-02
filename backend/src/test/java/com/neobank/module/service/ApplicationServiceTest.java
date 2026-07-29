@@ -25,6 +25,9 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 class ApplicationServiceTest {
 
@@ -142,15 +145,28 @@ class ApplicationServiceTest {
     @Test
     void boardShowsTheEffectiveOutcomeAfterDecision() {
         PolicyRecord row = decidedRecord("SIM-05");
-        when(records.findTop10ByOrderByCreatedAtDescApplicationIdDesc()).thenReturn(List.of(row));
+        PageRequest firstPage = PageRequest.of(0, 10);
+        when(records.findAllByOrderByCreatedAtDescApplicationIdDesc(firstPage))
+                .thenReturn(new PageImpl<>(List.of(row), firstPage, 1));
 
-        List<PolicyRecordView> result = service.findAll();
+        Page<PolicyRecordView> result = service.findAll(0, 10);
 
-        assertThat(result).singleElement().satisfies(view -> {
+        assertThat(result.getContent()).singleElement().satisfies(view -> {
             assertThat(view.applicationId()).isEqualTo("SIM-05");
             assertThat(view.status()).isEqualTo("APPROVED");
             assertThat(view.reference()).isEqualTo("pol-1234567890");
         });
+    }
+
+    @Test
+    void boardCapsPageSizeAtTen() {
+        PageRequest cappedPage = PageRequest.of(2, 10);
+        when(records.findAllByOrderByCreatedAtDescApplicationIdDesc(cappedPage))
+                .thenReturn(Page.empty(cappedPage));
+
+        service.findAll(2, 50);
+
+        verify(records).findAllByOrderByCreatedAtDescApplicationIdDesc(cappedPage);
     }
 
     @Test

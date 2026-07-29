@@ -32,10 +32,17 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/health'),
   info: () => request('/info'),
-  listApplications: (query) =>
-    query != null
-      ? request(`/api/v1/applications?q=${encodeURIComponent(query)}`)
-      : request('/api/v1/applications'),
+  listApplications: async (page = 0) => {
+    const { body, headers } = await fetchJson(`/api/v1/applications?page=${page}`);
+    return {
+      results: body ?? [],
+      page: Number(headers.get('X-Page') ?? page),
+      more: headers.get('X-More-Results') === 'true',
+      total: Number(headers.get('X-Total-Count') ?? body?.length ?? 0),
+    };
+  },
+  searchApplications: (query) =>
+    request(`/api/v1/applications?q=${encodeURIComponent(query)}`),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   getCaseApplicant: (id) => request(`/cases/${encodeURIComponent(id)}/applicant`),
   listConfigVersions: () => request('/config/versions'),

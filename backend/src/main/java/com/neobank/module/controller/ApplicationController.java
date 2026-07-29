@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -87,13 +88,22 @@ public class ApplicationController {
      * <p>Optional {@code ?q=} parameter: when present (even if empty), delegates to
      * {@link ApplicationService#searchApplications} which searches the full table and caps at 10.
      * An empty {@code q} returns {@code []} — the board is empty until the user types.
-     * Without {@code q} the top-10 default list is returned as before.</p>
+     * Without {@code q}, {@code ?page=} selects a 10-row page. Pagination metadata is returned in
+     * {@code X-Page}, {@code X-More-Results}, and {@code X-Total-Count}; the JSON body remains the
+     * same array shape used by existing clients.</p>
      */
     @GetMapping
-    public List<PolicyRecordView> list(@RequestParam(required = false) String q) {
+    public ResponseEntity<List<PolicyRecordView>> list(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page) {
         if (q != null) {
-            return applications.searchApplications(q);
+            return ResponseEntity.ok(applications.searchApplications(q));
         }
-        return applications.findAll();
+        Page<PolicyRecordView> result = applications.findAll(page, 10);
+        return ResponseEntity.ok()
+                .header("X-Page", String.valueOf(result.getNumber()))
+                .header("X-More-Results", String.valueOf(result.hasNext()))
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .body(result.getContent());
     }
 }
