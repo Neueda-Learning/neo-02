@@ -48,4 +48,20 @@ export const api = {
     return { results: body ?? [], more: headers.get('X-More-Results') === 'true' };
   },
   getApplicant: (id) => request(`/api/v1/cases/${encodeURIComponent(id)}/applicant`),
+  listReferrals: () => request('/cases?outcome=REFERRED&unclaimed-first=true'),
+  claimReferral: (id, operator) =>
+    request(`/cases/${encodeURIComponent(id)}/claim`, {
+      method: 'POST',
+      body: JSON.stringify({ operator }),
+    }),
+  releaseReferral: (id, operator) =>
+    request(`/cases/${encodeURIComponent(id)}/release`, {
+      method: 'POST',
+      body: JSON.stringify({ operator }),
+    }),
+  decideReferral: (id, outcome, reason, operator) =>
+    request(`/cases/${encodeURIComponent(id)}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ outcome, reason, operator }),
+    }),
 };

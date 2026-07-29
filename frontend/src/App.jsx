@@ -4,6 +4,7 @@ import CasesScreen from './components/CasesScreen.jsx';
 import DecisionDetailScreen from './components/DecisionDetailScreen.jsx';
 import PolicyConfigScreen from './components/PolicyConfigScreen.jsx';
 import RejectionPatternsScreen from './components/RejectionPatternsScreen.jsx';
+import ReferralQueueScreen from './components/ReferralQueueScreen.jsx';
 import RequestsScreen from './components/RequestsScreen.jsx';
 import { api } from './api.js';
 
@@ -13,6 +14,7 @@ const HEALTH_MS = 10000;
 export default function App() {
   const [screen, setScreen] = useState('applications');
   const [selectedCaseId, setSelectedCaseId] = useState(null);
+  const [caseReturnScreen, setCaseReturnScreen] = useState('applications');
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
@@ -53,6 +55,7 @@ export default function App() {
   const screens = [
     { id: 'applications', label: 'Applications' },
     { id: 'patterns', label: 'Rejection Patterns' },
+    { id: 'referrals', label: 'Referral Queue', hint: 'human review' },
     { id: 'cases', label: 'Search cases' },
     {
       id: 'decision',
@@ -66,6 +69,13 @@ export default function App() {
 
   const openCase = (row) => {
     setSelectedCaseId(row.applicationId);
+    setCaseReturnScreen('applications');
+    setScreen('decision');
+  };
+
+  const openReferral = (row) => {
+    setSelectedCaseId(row.applicationId);
+    setCaseReturnScreen('referrals');
     setScreen('decision');
   };
 
@@ -100,11 +110,17 @@ export default function App() {
         <RequestsScreen requests={requests} error={error} info={info} onOpenCase={openCase} />
       )}
       {screen === 'patterns' && <RejectionPatternsScreen />}
+      {screen === 'referrals' && <ReferralQueueScreen onOpenCase={openReferral} />}
       {screen === 'cases' && <CasesScreen info={info} />}
       {screen === 'decision' && selectedCaseId && (
         <DecisionDetailScreen
           applicationId={selectedCaseId}
-          onBack={() => setScreen('applications')}
+          onBack={() => setScreen(caseReturnScreen)}
+          backLabel={
+            caseReturnScreen === 'referrals'
+              ? 'Back to referral queue'
+              : 'Back to applications'
+          }
         />
       )}
       {screen === 'settings' && <PolicyConfigScreen />}

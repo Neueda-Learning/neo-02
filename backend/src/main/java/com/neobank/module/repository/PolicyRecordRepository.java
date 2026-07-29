@@ -1,6 +1,7 @@
 package com.neobank.module.repository;
 
 import com.neobank.module.model.PolicyRecord;
+import com.neobank.module.model.PolicyOutcome;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
@@ -33,5 +34,11 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
 
     List<PolicyRecord> findByApplicantFullNameContainingIgnoreCaseOrderBySubmittedAtDesc(
             String name, Pageable pageable);
-}
 
+    @Query("select record from PolicyRecord record "
+            + "where record.outcome = :outcome and record.decidedBy is null "
+            + "order by case when record.claimedBy is null then 0 else 1 end, "
+            + "record.submittedAt asc, record.applicationId asc")
+    List<PolicyRecord> findOpenReferrals(
+            @Param("outcome") PolicyOutcome outcome, Pageable pageable);
+}

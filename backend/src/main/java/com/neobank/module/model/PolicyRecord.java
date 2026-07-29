@@ -51,8 +51,20 @@ public class PolicyRecord {
     @Column(name = "rule_results", columnDefinition = "json")
     private List<RuleResult> ruleResults;
 
+    @Column(name = "claimed_by", length = 100)
+    private String claimedBy;
+
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
+
+    @Column(name = "decided_by", length = 100)
+    private String decidedBy;
+
     @Column(name = "decided_at")
     private Instant decidedAt;
+
+    @Column(name = "decision_reason", length = 1000)
+    private String decisionReason;
 
     @Column(name = "submitted_at", nullable = false)
     private Instant submittedAt;
@@ -134,6 +146,26 @@ public class PolicyRecord {
         return decidedAt;
     }
 
+    public String getClaimedBy() {
+        return claimedBy;
+    }
+
+    public Instant getClaimedAt() {
+        return claimedAt;
+    }
+
+    public String getDecidedBy() {
+        return decidedBy;
+    }
+
+    public String getDecisionReason() {
+        return decisionReason;
+    }
+
+    public boolean hasHumanDecision() {
+        return decidedBy != null;
+    }
+
     public boolean isDecided() {
         return "DECIDED".equals(processingStatus);
     }
@@ -144,6 +176,26 @@ public class PolicyRecord {
         this.ruleResults = new ArrayList<>(result.ruleResults());
         this.processingStatus = "DECIDED";
         this.decidedAt = Instant.now();
+    }
+
+    public void claim(String operator, Instant claimedAt) {
+        this.claimedBy = operator;
+        this.claimedAt = claimedAt;
+    }
+
+    public void release() {
+        this.claimedBy = null;
+        this.claimedAt = null;
+    }
+
+    /** Applies the human answer without altering the permanently stored machine evidence. */
+    public void completeManualDecision(
+            PolicyOutcome outcome, String reason, String operator, Instant decidedAt) {
+        this.outcome = outcome;
+        this.decidedBy = operator;
+        this.decidedAt = decidedAt;
+        this.decisionReason = reason;
+        release();
     }
 
     public Instant getCreatedAt() {

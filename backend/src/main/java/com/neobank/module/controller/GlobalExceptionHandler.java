@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.neobank.module.service.PolicyConfigValidationException;
 import com.neobank.module.service.CaseNotFoundException;
+import com.neobank.module.service.ReferralConflictException;
 
 /**
  * Turns exceptions into a stable JSON error shape, so the front end and the orchestrator get a
@@ -98,6 +99,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ReferralConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleReferralConflict(
+            ReferralConflictException ex) {
+        return error(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
