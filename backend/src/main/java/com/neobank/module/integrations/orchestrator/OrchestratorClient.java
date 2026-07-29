@@ -56,4 +56,12 @@ public class OrchestratorClient {
                     + "will notice", applicationId, e.toString());
         }
     }
+
+    /** Fetches the orchestrator-owned application live for the standard applicant proxy. */
+    public Application getApplication(String applicationId) {
+        return http.get()
+                .uri(applicationsUrl + "/{applicationId}", applicationId)
+                .retrieve()
+                .body(Application.class);
+    }
 }

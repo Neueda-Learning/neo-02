@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   BarChart,
@@ -17,7 +17,10 @@ import {
 import { api } from '../api.js';
 
 function toDateInputValue(value) {
-  return value.toISOString().slice(0, 10);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function getDefaultWindow() {
@@ -32,8 +35,8 @@ function getDefaultWindow() {
 
 
 export default function RejectionPatternsScreen() {
-  const [from, setFrom] = useState(() => getDefaultWindow().from);
-  const [to, setTo] = useState(() => getDefaultWindow().to);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -65,12 +68,6 @@ export default function RejectionPatternsScreen() {
     setTo(nextWindow.to);
     await load(nextWindow.from, nextWindow.to);
   };
-
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const chartData = useMemo(
       () => rows.map((row) => ({
@@ -171,7 +168,7 @@ export default function RejectionPatternsScreen() {
                 columns={columns}
                 rows={rows}
                 rowKey={(row) => row.code}
-                maxRows={20}
+                maxRows={10}
                 total={rows.length}
                 empty={<EmptyState title="No reason codes in this window" />}
               />

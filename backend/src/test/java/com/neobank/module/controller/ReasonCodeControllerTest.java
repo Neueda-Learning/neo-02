@@ -57,4 +57,18 @@ class ReasonCodeControllerTest {
 
         verifyNoInteractions(reasonCodes);
     }
+
+    @Test
+    void returnsAnEmptyArrayForAnEmptyWindow() throws Exception {
+        when(reasonCodes.countReasonCodes(
+                        LocalDate.parse("2026-08-01"),
+                        LocalDate.parse("2026-08-01")))
+                .thenReturn(List.of());
+
+        mvc.perform(get("/reason-codes")
+                        .queryParam("from", "2026-08-01")
+                        .queryParam("to", "2026-08-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
 }

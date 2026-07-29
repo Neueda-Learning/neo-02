@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReasonCodeService {
 
+    private static final int MAX_REASON_CODES = 10;
+
     private static final Set<String> REVIEW_CODES = Set.of(
             PolicyRuleEngine.SAMPLED_FOR_REVIEW,
             PolicyRuleEngine.REGISTRY_UNAVAILABLE);
@@ -52,6 +54,7 @@ public class ReasonCodeService {
                         .comparing(Map.Entry<String, Long>::getValue)
                         .reversed()
                         .thenComparing(Map.Entry::getKey))
+                .limit(MAX_REASON_CODES)
                 .map(entry -> new ReasonCodeCountDto(entry.getKey(), entry.getValue(), kindOf(entry.getKey())))
                 .toList();
     }

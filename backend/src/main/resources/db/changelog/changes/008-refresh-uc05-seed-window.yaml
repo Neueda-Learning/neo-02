@@ -8,12 +8,12 @@ databaseChangeLog:
             sql: |
               UPDATE policy_record
               SET
-                submitted_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:00:00')
-                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY,
-                created_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:00:00')
-                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY,
-                decided_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:05:00')
-                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY,
-                updated_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:05:00')
-                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY
+                submitted_at = TIMESTAMP('2026-07-01 09:00:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 14) DAY,
+                created_at = TIMESTAMP('2026-07-01 09:00:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 14) DAY,
+                decided_at = TIMESTAMP('2026-07-01 09:05:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 14) DAY,
+                updated_at = TIMESTAMP('2026-07-01 09:05:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 14) DAY
               WHERE application_id LIKE 'UC05-%';

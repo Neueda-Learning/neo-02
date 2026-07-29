@@ -1,5 +1,6 @@
 package com.neobank.module.repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -17,8 +18,10 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.neobank.module.dto.ReasonCodeCountDto;
 import com.neobank.module.model.PolicyConfig;
 import com.neobank.module.service.PolicyConfigWriter;
+import com.neobank.module.service.ReasonCodeService;
 
 /** Verifies the UC07/UC08 entity, JSON converters and Liquibase v1 seed against real MySQL. */
 @SpringBootTest
@@ -41,6 +44,26 @@ class PolicyConfigRepositoryIT {
 
     @Autowired
     PolicyConfigWriter writer;
+
+    @Autowired
+    ReasonCodeService reasonCodes;
+
+    @Test
+    void uc05SeedProducesTheLockedReasonCodeCountsInTheFixedWindow() {
+        assertThat(reasonCodes.countReasonCodes(
+                        LocalDate.parse("2026-07-01"),
+                        LocalDate.parse("2026-07-14")))
+                .extracting(
+                        ReasonCodeCountDto::code,
+                        ReasonCodeCountDto::count,
+                        ReasonCodeCountDto::kind)
+                .containsExactly(
+                        org.assertj.core.api.Assertions.tuple("POL_SAMPLED_FOR_REVIEW", 26L, "review"),
+                        org.assertj.core.api.Assertions.tuple("POL_TAX_RESIDENCY_UNSUPPORTED", 4L, "rejection"),
+                        org.assertj.core.api.Assertions.tuple("POL_EXISTING_PRODUCT_HELD", 3L, "rejection"),
+                        org.assertj.core.api.Assertions.tuple("POL_TAX_RESIDENCY_EXCLUDED", 2L, "rejection"),
+                        org.assertj.core.api.Assertions.tuple("POL_CUSTOMER_BLOCKED", 1L, "rejection"));
+    }
 
     @Test
     void theSeededV1DocumentRoundTripsThroughRealMysqlJson() {

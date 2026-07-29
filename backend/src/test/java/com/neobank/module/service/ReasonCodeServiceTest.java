@@ -63,6 +63,39 @@ class ReasonCodeServiceTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    void capsTheRankedResultAtTenReasonCodes() {
+        List<RuleResult> results = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(index -> new RuleResult(
+                        "rule-" + index,
+                        false,
+                        List.of("POL_CODE_%02d".formatted(index)),
+                        null,
+                        null,
+                        null,
+                        null))
+                .toList();
+        PolicyRecord row = new PolicyRecord("UC05-CAP", "ref-UC05-CAP");
+        row.completeDecision(new DecisionResult(
+                PolicyOutcome.REJECTED,
+                PolicyOutcome.REJECTED,
+                results));
+        when(records.findBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(
+                Instant.parse("2026-07-01T00:00:00Z"),
+                Instant.parse("2026-07-15T00:00:00Z")))
+                .thenReturn(List.of(row));
+
+        List<ReasonCodeCountDto> result = service.countReasonCodes(
+                LocalDate.parse("2026-07-01"),
+                LocalDate.parse("2026-07-14"));
+
+        assertThat(result).hasSize(10);
+        assertThat(result).extracting(ReasonCodeCountDto::code)
+                .containsExactly(
+                        "POL_CODE_00", "POL_CODE_01", "POL_CODE_02", "POL_CODE_03", "POL_CODE_04",
+                        "POL_CODE_05", "POL_CODE_06", "POL_CODE_07", "POL_CODE_08", "POL_CODE_09");
+    }
+
     private List<PolicyRecord> seedRows() {
         List<PolicyRecord> rows = new ArrayList<>();
         for (int i = 1; i <= 26; i++) {

@@ -6,7 +6,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neobank.module.dto.CaseDetailView;
+import com.neobank.module.dto.ApplicantViewDto;
 import com.neobank.module.model.RuleResult;
+import com.neobank.module.service.ApplicantService;
 import com.neobank.module.service.CaseDetailService;
 import com.neobank.module.service.CaseNotFoundException;
 import java.util.List;
@@ -24,6 +26,9 @@ class CaseControllerTest {
 
     @MockBean
     private CaseDetailService cases;
+
+    @MockBean
+    private ApplicantService applicants;
 
     @Test
     void returnsTheStoredDecisionAndFourRuleSections() throws Exception {
@@ -58,5 +63,25 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("missing")));
+    }
+
+    @Test
+    void proxiesTheLiveApplicantSubset() throws Exception {
+        when(applicants.find("app-1240")).thenReturn(new ApplicantViewDto(
+                "Sofia Ruiz",
+                "1990-02-14",
+                List.of("GB", "US"),
+                "CREDIT_CARD_REWARDS",
+                "WEB",
+                "GB"));
+
+        mvc.perform(get("/cases/app-1240/applicant"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Sofia Ruiz"))
+                .andExpect(jsonPath("$.taxResidencies[0]").value("GB"))
+                .andExpect(jsonPath("$.taxResidencies[1]").value("US"))
+                .andExpect(jsonPath("$.productCode").value("CREDIT_CARD_REWARDS"))
+                .andExpect(jsonPath("$.channel").value("WEB"))
+                .andExpect(jsonPath("$.countryOfResidence").value("GB"));
     }
 }
