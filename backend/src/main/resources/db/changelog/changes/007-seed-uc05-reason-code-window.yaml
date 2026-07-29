@@ -1,0 +1,105 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-seed-uc05-reason-code-window
+      author: neo-02
+      dbms: mysql
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: "0"
+            sql: "SELECT COUNT(*) FROM policy_record WHERE application_id LIKE 'UC05-%'"
+      changes:
+        - sql:
+            sql: |
+              INSERT INTO policy_record (
+                application_id,
+                processing_status,
+                outcome,
+                machine_outcome,
+                reference,
+                policy_config_version,
+                sampling_position,
+                rule_results,
+                decided_at,
+                submitted_at,
+                created_at,
+                updated_at,
+                lock_version
+              )
+              WITH RECURSIVE seq AS (
+                SELECT 1 AS n
+                UNION ALL
+                SELECT n + 1 FROM seq WHERE n < 26
+              )
+              SELECT
+                CONCAT('UC05-', LPAD(n, 2, '0')),
+                'DECIDED',
+                CASE WHEN n <= 4 THEN 'REJECTED' ELSE 'REFERRED' END,
+                CASE WHEN n <= 4 THEN 'REJECTED' ELSE 'APPROVED' END,
+                CONCAT('pol-uc05-', LPAD(n, 4, '0')),
+                1,
+                700 + n,
+                JSON_MERGE_PRESERVE(
+                  JSON_ARRAY(
+                    JSON_OBJECT(
+                      'ruleName', 'sampling',
+                      'passed', false,
+                      'reasonCodes', JSON_ARRAY('POL_SAMPLED_FOR_REVIEW'),
+                      'sampled', true,
+                      'position', 700 + n
+                    )
+                  ),
+                  IF(
+                    n <= 4,
+                    JSON_ARRAY(
+                      JSON_OBJECT(
+                        'ruleName', 'taxResidency',
+                        'passed', false,
+                        'reasonCodes', JSON_ARRAY('POL_TAX_RESIDENCY_UNSUPPORTED'),
+                        'matchedList', 'NONE'
+                      )
+                    ),
+                    JSON_ARRAY()
+                  ),
+                  IF(
+                    n <= 3,
+                    JSON_ARRAY(
+                      JSON_OBJECT(
+                        'ruleName', 'existingProduct',
+                        'passed', false,
+                        'reasonCodes', JSON_ARRAY('POL_EXISTING_PRODUCT_HELD'),
+                        'registryChecked', true
+                      )
+                    ),
+                    JSON_ARRAY()
+                  ),
+                  IF(
+                    n <= 2,
+                    JSON_ARRAY(
+                      JSON_OBJECT(
+                        'ruleName', 'taxResidency',
+                        'passed', false,
+                        'reasonCodes', JSON_ARRAY('POL_TAX_RESIDENCY_EXCLUDED'),
+                        'matchedList', 'EXCLUDED'
+                      )
+                    ),
+                    JSON_ARRAY()
+                  ),
+                  IF(
+                    n = 1,
+                    JSON_ARRAY(
+                      JSON_OBJECT(
+                        'ruleName', 'restrictionList',
+                        'passed', false,
+                        'reasonCodes', JSON_ARRAY('POL_CUSTOMER_BLOCKED')
+                      )
+                    ),
+                    JSON_ARRAY()
+                  )
+                ),
+                TIMESTAMP('2026-07-01 09:05:00') + INTERVAL ((n - 1) MOD 14) DAY,
+                TIMESTAMP('2026-07-01 09:00:00') + INTERVAL ((n - 1) MOD 14) DAY,
+                TIMESTAMP('2026-07-01 09:00:00') + INTERVAL ((n - 1) MOD 14) DAY,
+                TIMESTAMP('2026-07-01 09:05:00') + INTERVAL ((n - 1) MOD 14) DAY,
+                0
+              FROM seq;

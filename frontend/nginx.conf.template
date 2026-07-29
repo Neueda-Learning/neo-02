@@ -43,6 +43,12 @@ server {
     proxy_pass http://$cases_backend:8080$uri$is_args$args;
   }
 
+  location ^~ ${BASE_PATH}/reason-codes {
+    set $reason_codes_backend ${BACKEND_HOST};
+    rewrite ^${BASE_PATH}(/reason-codes.*)$ $1 break;
+    proxy_pass http://$reason_codes_backend:8080$uri$is_args$args;
+  }
+
   # UC07/UC08 — policy config read/write, same same-origin + fresh-DNS reasoning as /api/ above.
   location ^~ ${BASE_PATH}/config {
     set $config_backend ${BACKEND_HOST};

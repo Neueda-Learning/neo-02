@@ -2,6 +2,7 @@ package com.neobank.module.repository;
 
 import com.neobank.module.model.PolicyRecord;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,7 +14,12 @@ public interface PolicyRecordRepository extends JpaRepository<PolicyRecord, Stri
 
     List<PolicyRecord> findTop10ByOrderByCreatedAtDescApplicationIdDesc();
 
+    List<PolicyRecord> findBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(
+            Instant fromInclusive,
+            Instant toExclusive);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select record from PolicyRecord record where record.applicationId = :applicationId")
     Optional<PolicyRecord> findForUpdate(@Param("applicationId") String applicationId);
 }
+

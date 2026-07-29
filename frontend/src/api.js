@@ -37,4 +37,7 @@ export const api = {
   listApplications: () => request('/api/v1/applications'),
   getCase: (id) => request(`/cases/${encodeURIComponent(id)}`),
   listConfigVersions: () => request('/config/versions'),
+  listReasonCodes: (from, to) =>
+    request(`/reason-codes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 };
+

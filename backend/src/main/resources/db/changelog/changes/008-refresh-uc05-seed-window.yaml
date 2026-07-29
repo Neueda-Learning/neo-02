@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-refresh-uc05-seed-window
+      author: neo-02
+      dbms: mysql
+      changes:
+        - sql:
+            sql: |
+              UPDATE policy_record
+              SET
+                submitted_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:00:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY,
+                created_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:00:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY,
+                decided_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:05:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY,
+                updated_at = TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '09:05:00')
+                  + INTERVAL ((CAST(SUBSTRING(application_id, 6) AS UNSIGNED) - 1) MOD 7) DAY
+              WHERE application_id LIKE 'UC05-%';
