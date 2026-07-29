@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.neobank.module.dto.CaseDetailView;
 import com.neobank.module.dto.ApplicantViewDto;
 import com.neobank.module.model.RuleResult;
+import com.neobank.module.service.ApplicantUnavailableException;
 import com.neobank.module.service.ApplicantService;
 import com.neobank.module.service.CaseDetailService;
 import com.neobank.module.service.CaseNotFoundException;
@@ -82,6 +83,37 @@ class CaseControllerTest {
                 .andExpect(jsonPath("$.taxResidencies[1]").value("US"))
                 .andExpect(jsonPath("$.productCode").value("CREDIT_CARD_REWARDS"))
                 .andExpect(jsonPath("$.channel").value("WEB"))
-                .andExpect(jsonPath("$.countryOfResidence").value("GB"));
+                .andExpect(jsonPath("$.countryOfResidence").value("GB"))
+                .andExpect(jsonPath("$.email").doesNotExist())
+                .andExpect(jsonPath("$.mobile").doesNotExist())
+                .andExpect(jsonPath("$.identityDocument").doesNotExist())
+                .andExpect(jsonPath("$.employment").doesNotExist())
+                .andExpect(jsonPath("$.finances").doesNotExist())
+                .andExpect(jsonPath("$.delivery").doesNotExist())
+                .andExpect(jsonPath("$.consents").doesNotExist())
+                .andExpect(jsonPath("$.requestedCreditLimit").doesNotExist());
+    }
+
+    @Test
+    void unavailableApplicantReturnsJson503() throws Exception {
+        when(applicants.find("app-1240"))
+                .thenThrow(new ApplicantUnavailableException("app-1240"));
+
+        mvc.perform(get("/cases/app-1240/applicant"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("Retry")));
+    }
+
+    @Test
+    void applicantForUnknownLocalCaseReturnsJson404() throws Exception {
+        when(applicants.find("missing")).thenThrow(new CaseNotFoundException("missing"));
+
+        mvc.perform(get("/cases/missing/applicant"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("missing")));
     }
 }
