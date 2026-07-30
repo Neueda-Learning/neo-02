@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-03",
+  "correlationId": "pol-demo-approve-0003",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-03",
+    "channel": "BRANCH",
+    "submittedAt": "2026-07-30T09:03:00Z",
+    "applicant": {
+      "fullName": "Ewa Kowalska",
+      "dateOfBirth": "1994-10-05",
+      "email": "ewa.kowalska@example.com",
+      "mobile": "+447700910003",
+      "nationality": "PL",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["PL"],
+      "residentialStatus": "RENTING",
+      "currentAddress": {"line1": "8 Market Lane", "line2": "Flat 3", "city": "Leeds", "postcode": "LS1 2AB", "country": "GB"},
+      "monthsAtAddress": 18,
+      "dependants": 0
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "PLD1000003", "issuingCountry": "PL", "expiryDate": "2030-10-05"},
+    "employment": {"status": "PERMANENT", "employerName": "Yorkshire Health", "monthsInEmployment": 29},
+    "finances": {"annualIncome": 36000, "monthlyHousingCost": 900, "existingCreditCommitments": 100},
+    "product": {"productCode": "CREDIT_CARD_STANDARD", "requestedCreditLimit": 2200},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": true}
+  }
+}
+

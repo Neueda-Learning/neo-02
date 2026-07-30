@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-REJECT-04",
+  "correlationId": "pol-demo-reject-0004",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-REJECT-04",
+    "channel": "MOBILE_APP",
+    "submittedAt": "2026-07-30T09:14:00Z",
+    "applicant": {
+      "fullName": "Dana Kovacs",
+      "dateOfBirth": "1984-11-19",
+      "email": "dana.kovacs@example.com",
+      "mobile": "+447700910014",
+      "nationality": "HU",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["GB"],
+      "residentialStatus": "MORTGAGE",
+      "currentAddress": {"line1": "44 Victoria Road", "line2": null, "city": "Birmingham", "postcode": "B1 3AA", "country": "GB"},
+      "monthsAtAddress": 63,
+      "dependants": 2
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "HUD1000014", "issuingCountry": "HU", "expiryDate": "2032-11-19"},
+    "employment": {"status": "PERMANENT", "employerName": "Central Manufacturing", "monthsInEmployment": 85},
+    "finances": {"annualIncome": 56000, "monthlyHousingCost": 1200, "existingCreditCommitments": 190},
+    "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 4200},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+

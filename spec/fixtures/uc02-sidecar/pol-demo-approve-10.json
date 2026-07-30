@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-10",
+  "correlationId": "pol-demo-approve-0010",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-10",
+    "channel": "MOBILE_APP",
+    "submittedAt": "2026-07-30T09:10:00Z",
+    "applicant": {
+      "fullName": "Mateo Garcia",
+      "dateOfBirth": "1988-04-22",
+      "email": "mateo.garcia@example.com",
+      "mobile": "+447700910010",
+      "nationality": "ES",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["ES", "GB"],
+      "residentialStatus": "RENTING",
+      "currentAddress": {"line1": "33 Broad Street", "line2": null, "city": "Oxford", "postcode": "OX1 3BD", "country": "GB"},
+      "monthsAtAddress": 28,
+      "dependants": 2
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "ESD1000010", "issuingCountry": "ES", "expiryDate": "2032-04-22"},
+    "employment": {"status": "PERMANENT", "employerName": "Thames Research", "monthsInEmployment": 53},
+    "finances": {"annualIncome": 54000, "monthlyHousingCost": 1300, "existingCreditCommitments": 180},
+    "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 4500},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+

@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-02",
+  "correlationId": "pol-demo-approve-0002",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-02",
+    "channel": "WEB",
+    "submittedAt": "2026-07-30T09:02:00Z",
+    "applicant": {
+      "fullName": "Lukas Weber",
+      "dateOfBirth": "1987-06-23",
+      "email": "lukas.weber@example.com",
+      "mobile": "+447700910002",
+      "nationality": "DE",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["DE"],
+      "residentialStatus": "MORTGAGE",
+      "currentAddress": {"line1": "22 Bridge Road", "line2": null, "city": "Manchester", "postcode": "M1 1AE", "country": "GB"},
+      "monthsAtAddress": 48,
+      "dependants": 1
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "DED1000002", "issuingCountry": "DE", "expiryDate": "2032-06-23"},
+    "employment": {"status": "PERMANENT", "employerName": "Pennine Systems", "monthsInEmployment": 60},
+    "finances": {"annualIncome": 51000, "monthlyHousingCost": 1250, "existingCreditCommitments": 200},
+    "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 4000},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+

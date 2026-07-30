@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-REJECT-03",
+  "correlationId": "pol-demo-reject-0003",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-REJECT-03",
+    "channel": "BRANCH",
+    "submittedAt": "2026-07-30T09:13:00Z",
+    "applicant": {
+      "fullName": "Victor Sable",
+      "dateOfBirth": "1978-03-02",
+      "email": "victor.sable@example.com",
+      "mobile": "+447700910013",
+      "nationality": "GB",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["GB"],
+      "residentialStatus": "OWNER",
+      "currentAddress": {"line1": "6 Regent Avenue", "line2": null, "city": "London", "postcode": "NW1 4NR", "country": "GB"},
+      "monthsAtAddress": 96,
+      "dependants": 1
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "GBD1000013", "issuingCountry": "GB", "expiryDate": "2030-03-02"},
+    "employment": {"status": "PERMANENT", "employerName": "Regent Imports", "monthsInEmployment": 120},
+    "finances": {"annualIncome": 72000, "monthlyHousingCost": 1300, "existingCreditCommitments": 240},
+    "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 5000},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+

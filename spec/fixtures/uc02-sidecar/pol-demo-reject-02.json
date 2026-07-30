@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-REJECT-02",
+  "correlationId": "pol-demo-reject-0002",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-REJECT-02",
+    "channel": "WEB",
+    "submittedAt": "2026-07-30T09:12:00Z",
+    "applicant": {
+      "fullName": "Rafael Almeida",
+      "dateOfBirth": "1993-11-04",
+      "email": "rafael.almeida@example.com",
+      "mobile": "+447700910012",
+      "nationality": "BR",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["BR"],
+      "residentialStatus": "RENTING",
+      "currentAddress": {"line1": "27 Temple Way", "line2": null, "city": "Bristol", "postcode": "BS2 0EL", "country": "GB"},
+      "monthsAtAddress": 22,
+      "dependants": 0
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "BRD1000012", "issuingCountry": "BR", "expiryDate": "2030-11-04"},
+    "employment": {"status": "PERMANENT", "employerName": "Harbour Media", "monthsInEmployment": 34},
+    "finances": {"annualIncome": 41000, "monthlyHousingCost": 1000, "existingCreditCommitments": 110},
+    "product": {"productCode": "CREDIT_CARD_STANDARD", "requestedCreditLimit": 2400},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+

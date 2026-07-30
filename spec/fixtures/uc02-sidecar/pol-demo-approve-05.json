@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-05",
+  "correlationId": "pol-demo-approve-0005",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-05",
+    "channel": "WEB",
+    "submittedAt": "2026-07-30T09:05:00Z",
+    "applicant": {
+      "fullName": "Carlos Ruiz",
+      "dateOfBirth": "1990-08-11",
+      "email": "carlos.ruiz@example.com",
+      "mobile": "+447700910005",
+      "nationality": "ES",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["ES"],
+      "residentialStatus": "RENTING",
+      "currentAddress": {"line1": "41 Queen Street", "line2": null, "city": "Cardiff", "postcode": "CF10 2AG", "country": "GB"},
+      "monthsAtAddress": 31,
+      "dependants": 0
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "ESD1000005", "issuingCountry": "ES", "expiryDate": "2031-08-11"},
+    "employment": {"status": "PERMANENT", "employerName": "Severn Digital", "monthsInEmployment": 42},
+    "finances": {"annualIncome": 39000, "monthlyHousingCost": 950, "existingCreditCommitments": 120},
+    "product": {"productCode": "CREDIT_CARD_STANDARD", "requestedCreditLimit": 2500},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": false, "marketingConsent": false}
+  }
+}
+

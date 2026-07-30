@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-06",
+  "correlationId": "pol-demo-approve-0006",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-06",
+    "channel": "MOBILE_APP",
+    "submittedAt": "2026-07-30T09:06:00Z",
+    "applicant": {
+      "fullName": "Claire Martin",
+      "dateOfBirth": "1995-03-27",
+      "email": "claire.martin@example.com",
+      "mobile": "+447700910006",
+      "nationality": "FR",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["FR"],
+      "residentialStatus": "LIVING_WITH_FAMILY",
+      "currentAddress": {"line1": "7 Station Road", "line2": null, "city": "Birmingham", "postcode": "B1 1BB", "country": "GB"},
+      "monthsAtAddress": 54,
+      "dependants": 0
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "FRD1000006", "issuingCountry": "FR", "expiryDate": "2032-03-27"},
+    "employment": {"status": "CONTRACT", "employerName": "Midlands Design", "monthsInEmployment": 17},
+    "finances": {"annualIncome": 33000, "monthlyHousingCost": 600, "existingCreditCommitments": 80},
+    "product": {"productCode": "CREDIT_CARD_STANDARD", "requestedCreditLimit": 1800},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": true}
+  }
+}
+

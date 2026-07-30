@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-04",
+  "correlationId": "pol-demo-approve-0004",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-04",
+    "channel": "MOBILE_APP",
+    "submittedAt": "2026-07-30T09:04:00Z",
+    "applicant": {
+      "fullName": "Aoife Murphy",
+      "dateOfBirth": "1989-12-19",
+      "email": "aoife.murphy@example.com",
+      "mobile": "+447700910004",
+      "nationality": "IE",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["IE"],
+      "residentialStatus": "OWNER",
+      "currentAddress": {"line1": "16 Harbour View", "line2": null, "city": "Bristol", "postcode": "BS1 4QA", "country": "GB"},
+      "monthsAtAddress": 72,
+      "dependants": 2
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "IED1000004", "issuingCountry": "IE", "expiryDate": "2033-12-19"},
+    "employment": {"status": "PERMANENT", "employerName": "Harbour Analytics", "monthsInEmployment": 81},
+    "finances": {"annualIncome": 58000, "monthlyHousingCost": 1200, "existingCreditCommitments": 250},
+    "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 5000},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+

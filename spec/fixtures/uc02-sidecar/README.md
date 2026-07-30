@@ -1,13 +1,15 @@
-# UC02 sidecar overlay
+# Local sidecar overlay
 
-These four envelopes are mounted into the unmodified upstream sidecar through
-`SCENARIOS_DIR`. Start the compose stack, then run:
+This directory is mounted into the unmodified upstream sidecar through
+`SCENARIOS_DIR`. It contains:
 
-```powershell
-.\scripts\test-uc02-sidecar.ps1
+- ten `pol-demo-approve-*` seed-policy approval examples;
+- five `pol-demo-reject-*` seed-policy rejection examples.
+
+The policy demo payloads are documented in
+[`docs/sidecar-policy-sample-posts.md`](../../../docs/sidecar-policy-sample-posts.md).
+Restart the sidecar after adding or editing an overlay:
+
+```bash
+docker compose restart sidecar
 ```
-
-The script resets this module's local case tables, sends the four exact checkpoints plus
-17 clean fillers in durable acceptance order, waits for callbacks, and verifies that
-`app-1287` is the 21st decision. The fixtures intentionally use the current template
-`/api/v1/applications` contract; the v5 execute-contract migration is deferred to UC00.

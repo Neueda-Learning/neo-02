@@ -1,0 +1,30 @@
+{
+  "applicationId": "POL-DEMO-APPROVE-07",
+  "correlationId": "pol-demo-approve-0007",
+  "command": "process-application",
+  "application": {
+    "applicationId": "POL-DEMO-APPROVE-07",
+    "channel": "PHONE",
+    "submittedAt": "2026-07-30T09:07:00Z",
+    "applicant": {
+      "fullName": "Emma de Vries",
+      "dateOfBirth": "1986-01-30",
+      "email": "emma.devries@example.com",
+      "mobile": "+447700910007",
+      "nationality": "NL",
+      "countryOfResidence": "GB",
+      "taxResidencies": ["NL"],
+      "residentialStatus": "MORTGAGE",
+      "currentAddress": {"line1": "29 Castle Street", "line2": null, "city": "Edinburgh", "postcode": "EH1 2NB", "country": "GB"},
+      "monthsAtAddress": 67,
+      "dependants": 1
+    },
+    "identityDocument": {"type": "PASSPORT", "documentId": "NLD1000007", "issuingCountry": "NL", "expiryDate": "2030-01-30"},
+    "employment": {"status": "PERMANENT", "employerName": "Caledonia Finance", "monthsInEmployment": 74},
+    "finances": {"annualIncome": 61000, "monthlyHousingCost": 1400, "existingCreditCommitments": 220},
+    "product": {"productCode": "CREDIT_CARD_REWARDS", "requestedCreditLimit": 6000},
+    "delivery": {"useCurrentAddress": true, "address": null},
+    "consents": {"termsAccepted": true, "paperlessStatements": true, "marketingConsent": false}
+  }
+}
+
